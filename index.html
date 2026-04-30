@@ -413,8 +413,85 @@ function getHistory(ticker){
 }
 
 // ════════════════════════════════════════════════════════════════
-// SVG CHARTS — 4-Panel: Score + Vola + RSI + RelVol/Ratio
+// VCP SIGNAL BADGES
 // ════════════════════════════════════════════════════════════════
+function calcBadges(ticker){
+  const hist=getHistory(ticker);
+  const N=hist.length;
+  const badges=[];
+
+  // ── SQUEEZE: Score>85 UND RV<0.5 — mind. 2 Tage in Folge ──
+  if(N>=2){
+    let streak=0;
+    for(let i=N-1;i>=0;i--){
+      const h=hist[i];
+      if(h.score>85&&h.rv!=null&&h.rv<0.5) streak++;
+      else break;
+    }
+    if(streak>=2) badges.push({
+      id:"squeeze",
+      icon:"🔴",
+      label:"SQUEEZE",
+      tip:`Score>85 & RV<0.5 seit ${streak} Tag${streak>1?"en":""}`,
+      col:"#ef5350",
+      bg:"rgba(239,83,80,.12)",
+      border:"rgba(239,83,80,.35)"
+    });
+  }
+
+  // ── TIGHTNESS: Ratio<1.0 — 3 Tage in Folge, fallend ──
+  if(N>=3){
+    const last3=hist.slice(-3);
+    const allBelow=last3.every(h=>h.ratio!=null&&h.ratio<1.0);
+    const falling=last3[2].ratio<=last3[0].ratio; // Tag3 ≤ Tag1
+    if(allBelow&&falling) badges.push({
+      id:"tightness",
+      icon:"🟡",
+      label:"TIGHTNESS",
+      tip:`Ratio<1.0 × 3 Tage, fallend (${last3[0].ratio?.toFixed(2)}→${last3[2].ratio?.toFixed(2)})`,
+      col:"#ffd54f",
+      bg:"rgba(255,213,79,.12)",
+      border:"rgba(255,213,79,.35)"
+    });
+  }
+
+  // ── ACCUMULATION: RSI steigt, Ratio sinkt/stabil, Ratio<1.2 ──
+  if(N>=3){
+    const ref=hist[Math.max(0,N-4)]; // vor 3 Tagen (oder ältester)
+    const cur=hist[N-1];
+    const rsiUp=cur.rsi!=null&&ref.rsi!=null&&cur.rsi>ref.rsi;
+    const ratioDown=cur.ratio!=null&&ref.ratio!=null&&cur.ratio<=ref.ratio;
+    const ratioOk=cur.ratio!=null&&cur.ratio<1.2;
+    if(rsiUp&&ratioDown&&ratioOk) badges.push({
+      id:"accum",
+      icon:"🟢",
+      label:"ACCUMULATION",
+      tip:`RSI ↑ ${ref.rsi?.toFixed(0)}→${cur.rsi?.toFixed(0)}, Ratio ↓ ${ref.ratio?.toFixed(2)}→${cur.ratio?.toFixed(2)}`,
+      col:"#00e87a",
+      bg:"rgba(0,232,122,.12)",
+      border:"rgba(0,232,122,.35)"
+    });
+  }
+
+  return badges;
+}
+
+function renderBadges(ticker,compact=false){
+  const badges=calcBadges(ticker);
+  if(!badges.length) return "";
+  if(compact){
+    return badges.map(b=>`<span title="${b.tip}" style="font-size:12px;cursor:help">${b.icon}</span>`).join("");
+  }
+  return`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">${
+    badges.map(b=>`<div title="${b.tip}" style="display:inline-flex;align-items:center;gap:4px;
+      padding:3px 8px;border-radius:4px;background:${b.bg};border:1px solid ${b.border};cursor:help">
+      <span style="font-size:11px">${b.icon}</span>
+      <span style="color:${b.col};font-size:9px;font-weight:700;letter-spacing:.5px">${b.label}</span>
+    </div>`).join("")
+  }</div>`;
+}
+
+
 function buildCharts(ticker){
   const hist=getHistory(ticker);
   if(hist.length<1)return`<div class="no-chart">Keine History.</div>`;
@@ -713,9 +790,10 @@ function renderTop10(){
     const sc=score(s);
     const r=ratio(s);
     const open=expandedTicker===s.t;
+    const bdg=renderBadges(s.t,true); // kompakt für Tabelle
     rows+=`<tr class="stock-row${open?" open":""}" onclick="toggleDetail('${s.t}')">
       <td style="width:10px;color:#37474f;font-size:8px;padding:5px 3px">${i+1}</td>
-      <td style="font-weight:700;font-size:12px;color:var(--blue);letter-spacing:.2px;padding:5px 5px;white-space:nowrap">${s.t}</td>
+      <td style="font-weight:700;font-size:12px;color:var(--blue);letter-spacing:.2px;padding:5px 5px;white-space:nowrap">${s.t}${bdg?` <span style="letter-spacing:1px">${bdg}</span>`:""}</td>
       <td style="padding:5px 5px"><span style="font-weight:700;font-size:12px;color:${scoreColor(sc)}">${sc}</span></td>
       ${badge(s.atr,pATR(s.atr),v=>v.toFixed(1)+"%","")}
       ${badge(s.v1w,pV1W(s.v1w),v=>v.toFixed(1)+"%","")}
@@ -770,6 +848,7 @@ function buildDetail(s,sc){
       <span style="font-size:12px;font-weight:700;color:var(--blue)">${s.t} <span style="color:#37474f;font-size:8px;font-weight:400">${s.sec||""}</span></span>
       <span style="color:#37474f;font-size:8px">${hist.length} Scan${hist.length!==1?"s":""}</span>
     </div>
+    ${renderBadges(s.t,false)}
     ${stats}
     ${buildCharts(s.t)}`;
 }
