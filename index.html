@@ -155,10 +155,133 @@ textarea{background:var(--bg2);border:1px solid var(--border2);color:var(--white
 <!-- TABS -->
 <div id="tab0"></div>
 <div id="tab1" style="display:none"></div>
-<div id="tab2" style="display:none"></div>
+<div id="tab2" style="display:none">
+  <!-- Upload-Bereich — STATISCH im HTML, kein dynamisches Rendering -->
+  <div style="padding:14px">
+    <div id="upload-title" style="font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:14px;color:#00e87a">🟢 NEUER SCAN — SOFT</div>
+
+    <!-- DATEI-AUSWAHL BUTTON -->
+    <div style="margin-bottom:12px">
+      <input type="file" id="csv-file-input" accept=".csv,text/csv" multiple
+             style="display:block;width:100%;padding:14px;background:#0d1219;
+                    border:2px dashed rgba(0,232,122,.4);border-radius:10px;
+                    color:#00e87a;font-size:13px;font-family:inherit;cursor:pointer;
+                    box-sizing:border-box">
+    </div>
+
+    <div id="upload-status" style="color:#37474f;font-size:10px;margin-bottom:8px;min-height:16px"></div>
+    <div id="upload-preview" style="display:none;background:#060c14;border:1px solid #1e2836;
+         border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="color:#37474f;font-size:8px;letter-spacing:1px;margin-bottom:4px">VORSCHAU</div>
+      <div id="preview-text" style="color:#546e7a;font-size:9px;white-space:pre;overflow-x:auto;line-height:1.6"></div>
+    </div>
+
+    <button id="add-scan-btn" onclick="doAdd()"
+            style="display:none;width:100%;padding:13px;background:#00e87a;color:#000;
+                   border:none;border-radius:8px;font-weight:700;font-size:13px;
+                   cursor:pointer;letter-spacing:1px;font-family:inherit;margin-bottom:10px">
+      SCAN HINZUFÜGEN →
+    </button>
+    <div id="upload-err" style="color:#ef5350;font-size:10px;min-height:14px"></div>
+
+    <!-- Manuelle Eingabe -->
+    <details style="margin-top:10px">
+      <summary style="color:#37474f;font-size:9px;letter-spacing:1px;cursor:pointer;user-select:none;text-transform:uppercase">Manuelle CSV-Eingabe</summary>
+      <textarea id="manual-csv" rows="6"
+        style="margin-top:8px;background:#0d1219;border:1px solid #1e2836;color:#90a4ae;
+               padding:10px;border-radius:6px;font-family:'Courier New',monospace;font-size:9px;
+               width:100%;resize:vertical;outline:none;line-height:1.6;box-sizing:border-box"
+        placeholder="Symbol,Average True Range % (14) 1 Tag,..."></textarea>
+      <button onclick="applyManual()"
+        style="margin-top:6px;padding:8px 16px;background:#0d1219;border:1px solid rgba(0,232,122,.3);
+               color:#00e87a;cursor:pointer;border-radius:6px;font-size:10px;font-family:inherit;font-weight:700">
+        ÜBERNEHMEN
+      </button>
+    </details>
+  </div>
+</div>
 <div id="tab3" style="display:none"></div>
 
 <script>
+// ════════════════════════════════════════════════════════════════
+// UPLOAD — statisch im HTML verdrahtet
+// ════════════════════════════════════════════════════════════════
+function initUpload(){
+  const input=document.getElementById("csv-file-input");
+  if(!input)return;
+  input.addEventListener("change",function(){
+    const files=Array.from(this.files);
+    if(!files.length)return;
+    if(files.length===1)handleFile(files[0]);
+    else handleMultiFile(files);
+    this.value="";
+  });
+}
+function handleFile(file){
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
+    state[uni].form={csv:e.target.result,file:file.name,date:dm?dm[1]:new Date().toISOString().slice(0,10),label:file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim()};
+    updateUploadUI();
+  };
+  reader.readAsText(file);
+}
+function handleMultiFile(files){
+  let done=0;
+  files.forEach(file=>{
+    const r=new FileReader();
+    r.onload=function(ev){
+      const raw=parseCSV(ev.target.result);
+      if(raw.length){const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);U().scans.push(buildScan(dm?dm[1]:new Date().toISOString().slice(0,10),file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim(),raw));}
+      if(++done===files.length){sortScansChronologically();saveU();expandedTicker=null;switchTab(0);}
+    };
+    r.readAsText(file);
+  });
+}
+function updateUploadUI(){
+  const f=U().form;
+  const status=document.getElementById("upload-status");
+  const preview=document.getElementById("upload-preview");
+  const previewTxt=document.getElementById("preview-text");
+  const addBtn=document.getElementById("add-scan-btn");
+  if(!status)return;
+  if(f&&f.csv){
+    status.style.color="#00e87a";
+    status.textContent="✓ "+f.file+"  ·  "+f.date;
+    if(previewTxt)previewTxt.textContent=f.csv.split("\n").slice(0,3).join("\n")+"…";
+    if(preview)preview.style.display="block";
+    if(addBtn)addBtn.style.display="block";
+  } else {
+    status.textContent="";
+    if(preview)preview.style.display="none";
+    if(addBtn)addBtn.style.display="none";
+  }
+}
+function renderUpload(){
+  const title=document.getElementById("upload-title");
+  const addBtn=document.getElementById("add-scan-btn");
+  if(title){const acol=uni==="hard"?"#ffd54f":"#00e87a";title.style.color=acol;title.textContent=(uni==="soft"?"🟢":"🟡")+" NEUER SCAN — "+uni.toUpperCase();if(addBtn)addBtn.style.background=acol;}
+  updateUploadUI();
+}
+function applyManual(){
+  const ta=document.getElementById("manual-csv");
+  if(ta&&ta.value.trim()){state[uni].form={csv:ta.value,file:"manual",date:new Date().toISOString().slice(0,10),label:"Manuell"};updateUploadUI();}
+}
+function sortScansChronologically(){
+  U().scans.sort((a,b)=>a.date.localeCompare(b.date));
+  U().sel=U().scans.length-1;
+}
+function doAdd(){
+  const f=U().form;const err=document.getElementById("upload-err");
+  if(!f||!f.csv){if(err)err.textContent="Keine Daten.";return;}
+  const raw=parseCSV(f.csv);
+  if(!raw.length){if(err)err.textContent="CSV konnte nicht geparst werden.";return;}
+  if(err)err.textContent="";
+  U().scans.push(buildScan(f.date,f.label||f.date,raw));
+  sortScansChronologically();saveU();
+  state[uni].form={date:new Date().toISOString().slice(0,10),label:"",csv:"",file:""};
+  expandedTicker=null;switchTab(0);
+}
 // ════════════════════════════════════════════════════════════════
 // SEED DATA
 // ════════════════════════════════════════════════════════════════
@@ -710,142 +833,6 @@ function renderCompare(){
   el.innerHTML=`<div class="compare-wrap"><div class="compare-ttl">SCORE-VERGLEICH · ${uni.toUpperCase()} · TOP 30</div><table><thead><tr><th style="min-width:75px">TICKER</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-// ── UPLOAD ──
-function renderUpload(){
-  const el=document.getElementById("tab2");
-  const f=U().form;
-  const acol=uni==="hard"?"#ffd54f":"#00e87a";
-  const border=uni==="hard"?"rgba(255,213,79,.3)":"rgba(0,232,122,.3)";
-
-  el.innerHTML=`<div style="padding:12px">
-    <div style="color:${acol};font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:14px">
-      ${uni==="soft"?"🟢":"🟡"} NEUER SCAN — ${uni.toUpperCase()}
-    </div>
-
-    <input type="file" id="fi" accept=".csv,text/csv" multiple style="display:none">
-
-    <!-- UPLOAD BUTTON -->
-    <button id="pick-btn" style="width:100%;border:2px dashed ${border};border-radius:10px;
-      background:#0d1219;min-height:140px;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;gap:8px;cursor:pointer;
-      text-align:center;padding:20px;margin-bottom:10px;font-family:inherit">
-      <div style="font-size:40px">${f.file?"✅":"📂"}</div>
-      <div style="color:${f.file?acol:"#90a4ae"};font-size:13px;font-weight:700;letter-spacing:1px">
-        ${f.file&&f.file!=="manual"?f.file:"CSV HOCHLADEN"}
-      </div>
-      <div style="color:#37474f;font-size:10px">
-        ${f.file?`${f.date} · Tippen zum Ersetzen`:"Tippen um Datei zu wählen"}
-      </div>
-    </button>
-
-    ${f.csv?`
-    <div style="background:#060c14;border:1px solid #1e2836;border-radius:6px;padding:10px;margin-bottom:10px">
-      <div style="color:#37474f;font-size:8px;letter-spacing:1px;margin-bottom:5px">VORSCHAU</div>
-      <div style="color:#37474f;font-size:9px;white-space:pre;overflow-x:auto;line-height:1.6">${esc(f.csv.split("\n").slice(0,3).join("\n"))}…</div>
-    </div>
-    <div id="ferr" style="color:#ef5350;font-size:10px;margin-bottom:8px"></div>
-    <button onclick="doAdd()" style="width:100%;padding:13px;background:${acol};color:#000;border:none;
-      border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:1px;font-family:inherit">
-      SCAN HINZUFÜGEN →
-    </button>`:`<div id="ferr"></div>`}
-
-    <details style="margin-top:14px">
-      <summary style="color:#37474f;font-size:9px;letter-spacing:1px;cursor:pointer;user-select:none;text-transform:uppercase">Manuelle Eingabe</summary>
-      <textarea id="ftxt" rows="6" style="margin-top:8px;background:#0d1219;border:1px solid #1e2836;
-        color:#90a4ae;padding:10px;border-radius:6px;font-family:'Courier New',monospace;
-        font-size:9px;width:100%;resize:vertical;outline:none;line-height:1.6"
-        placeholder="Symbol,Average True Range % (14) 1 Tag,..."></textarea>
-      <button onclick="applyTxt()" style="margin-top:6px;padding:8px 16px;background:#0d1219;
-        border:1px solid ${border};color:${acol};cursor:pointer;border-radius:6px;
-        font-size:10px;font-family:inherit;font-weight:700">ÜBERNEHMEN</button>
-    </details>
-  </div>`;
-
-  // Datei-Input — Button öffnet den picker
-  const fi=document.getElementById("fi");
-  const btn=document.getElementById("pick-btn");
-
-  btn.addEventListener("click", function(e){
-    e.preventDefault();
-    fi.click();
-  });
-
-  fi.addEventListener("change", function(){
-    const files=Array.from(this.files);
-    if(!files.length) return;
-    if(files.length===1) handleFile(files[0]);
-    else handleMultiFile(files);
-    this.value="";
-  });
-}
-
-function handleFile(file){
-  const reader=new FileReader();
-  reader.onload=function(e){
-    const f=U().form;
-    f.csv=e.target.result;
-    f.file=file.name;
-    const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
-    f.date=dm?dm[1]:new Date().toISOString().slice(0,10);
-    if(!f.label) f.label=file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim();
-    renderUpload();
-  };
-  reader.readAsText(file);
-}
-
-function handleMultiFile(files){
-  let done=0;
-  files.forEach(file=>{
-    const r=new FileReader();
-    r.onload=function(ev){
-      const raw=parseCSV(ev.target.result);
-      if(raw.length){
-        const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
-        const date=dm?dm[1]:new Date().toISOString().slice(0,10);
-        const label=file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim();
-        U().scans.push(buildScan(date,label,raw));
-      }
-      done++;
-      if(done===files.length){
-        sortScansChronologically();
-        saveU();
-        expandedTicker=null;
-        switchTab(0);
-      }
-    };
-    r.readAsText(file);
-  });
-}
-
-function applyTxt(){
-  const ta=document.getElementById("ftxt");
-  if(ta&&ta.value.trim()){
-    U().form.csv=ta.value;
-    U().form.file="manual";
-    U().form.date=new Date().toISOString().slice(0,10);
-    renderUpload();
-  }
-}
-
-function sortScansChronologically(){
-  U().scans.sort((a,b)=>a.date.localeCompare(b.date));
-  U().sel=U().scans.length-1;
-}
-
-function doAdd(){
-  const f=U().form;
-  const err=document.getElementById("ferr");
-  if(!f.csv){if(err)err.textContent="Keine Daten.";return;}
-  const raw=parseCSV(f.csv);
-  if(!raw.length){if(err)err.textContent="CSV konnte nicht geparst werden.";return;}
-  U().scans.push(buildScan(f.date,f.label||f.date,raw));
-  sortScansChronologically();
-  saveU();
-  U().form={date:new Date().toISOString().slice(0,10),label:"",csv:"",file:""};
-  expandedTicker=null;
-  switchTab(0);
-}
-
 // ── MANAGE ──
 function renderManage(){
   const el=document.getElementById("tab3");
@@ -929,6 +916,7 @@ window.addEventListener("load",()=>{
 // INIT
 // ════════════════════════════════════════════════════════════════
 loadAll();
+initUpload();
 render();
 </script>
 </body>
