@@ -141,7 +141,7 @@ textarea{background:var(--bg2);border:1px solid var(--border2);color:var(--white
   <div class="nav-tabs">
     <button class="tab-btn active" onclick="switchTab(0)">🔥 TOP 10</button>
     <button class="tab-btn" onclick="switchTab(1)">Δ CHART</button>
-    <button class="tab-btn" onclick="switchTab(2)">＋ SCAN</button>
+    <button class="tab-btn" onclick="switchTab(2)">↑ UPLOAD</button>
     <button class="tab-btn" onclick="switchTab(3)">⚙</button>
   </div>
 </div>
@@ -715,39 +715,74 @@ function renderUpload(){
   const el=document.getElementById("tab2");
   const f=U().form;
   const acol=uni==="hard"?"#ffd54f":"#00e87a";
-  el.innerHTML=`<div class="upload-wrap">
-    <div class="upload-title${uni==="hard"?" hard":""}">${uni==="soft"?"🟢":"🟡"} NEUER SCAN — ${uni.toUpperCase()}</div>
-    <div class="field"><label>Datum (automatisch aus Dateiname)</label><input type="date" id="f-date" value="${f.date}"></div>
-    <div class="field"><label>Label (optional)</label><input type="text" id="f-label" placeholder="z.B. Morgen-Scan" value="${f.label||""}"></div>
-    <div id="dz" class="drop-zone${f.file?" ready":""}" style="position:relative;margin-bottom:10px">
-      <div class="drop-icon">📂</div>
-      <div class="drop-main${f.file?" ok":""}">${f.file&&f.file!=="manual"?`✓ ${f.file}`:f.file==="manual"?"✓ Manuell eingegeben":"CSV tippen zum Auswählen"}</div>
-      <div class="drop-sub" style="margin-top:2px">${f.file?`Uhrzeit: ${f.time||"—"} · Tippen zum Ersetzen`:"Datum & Uhrzeit werden automatisch gesetzt"}</div>
-      <input type="file" id="fi" accept=".csv,text/csv" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
+  const border=uni==="hard"?"rgba(255,213,79,.3)":"rgba(0,232,122,.3)";
+
+  el.innerHTML=`<div style="padding:0">
+    <!-- GROSSER UPLOAD-BUTTON — nimmt fast ganzen Screen ein -->
+    <div style="position:relative;margin:12px;border:2px dashed ${border};border-radius:12px;
+      background:#0d1219;min-height:180px;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:10px;cursor:pointer;
+      transition:all .2s" id="dz">
+      <input type="file" id="fi" accept=".csv,text/csv" multiple
+        style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;z-index:2">
+      <div style="font-size:48px;pointer-events:none">${f.file?"✅":"📂"}</div>
+      <div style="color:${f.file?acol:"#90a4ae"};font-size:14px;font-weight:700;letter-spacing:1px;pointer-events:none">
+        ${f.file&&f.file!=="manual"?f.file:f.file==="manual"?"Manuell eingegeben":"CSV HOCHLADEN"}
+      </div>
+      <div style="color:#37474f;font-size:10px;pointer-events:none">
+        ${f.file?`${f.date} · ${f.time||"—"}  ·  Tippen zum Ersetzen`:"Tippe hier um eine CSV-Datei auszuwählen"}
+      </div>
     </div>
-    ${f.csv?`<div class="preview"><div class="preview-lbl">Vorschau</div><div class="preview-txt">${esc(f.csv.split("\n").slice(0,3).join("\n"))}…</div></div>`:""}
-    <div class="err" id="ferr"></div>
-    <button class="btn-add${uni==="hard"?" hard":""}" onclick="doAdd()" ${!f.csv?"disabled":""}>SCAN HINZUFÜGEN →</button>
-    <details style="margin-top:12px"><summary>Manuelle Eingabe</summary>
-      <textarea id="ftxt" rows="6" placeholder="Symbol,Average True Range % (14) 1 Tag,..."></textarea>
-      <button onclick="applyTxt()" style="margin-top:5px;padding:6px 13px;background:#0d1219;border:1px solid #1e2836;color:${acol};cursor:pointer;border-radius:4px;font-size:10px;font-family:inherit;">ÜBERNEHMEN</button>
+
+    <!-- STATUS / VORSCHAU -->
+    ${f.csv?`
+    <div style="margin:0 12px 12px;background:#060c14;border:1px solid #1e2836;border-radius:8px;padding:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <span style="color:#546e7a;font-size:9px;letter-spacing:1px">VORSCHAU</span>
+        <span style="color:#37474f;font-size:9px">${(f.csv.match(/\n/g)||[]).length} Zeilen</span>
+      </div>
+      <div style="color:#37474f;font-size:9px;white-space:pre;overflow-x:auto;line-height:1.6">${esc(f.csv.split("\n").slice(0,3).join("\n"))}…</div>
+    </div>
+    <div style="margin:0 12px">
+      <div class="err" id="ferr" style="margin-bottom:6px"></div>
+      <button onclick="doAdd()" style="width:100%;padding:14px;background:${acol};color:#000;border:none;
+        border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;letter-spacing:1px;font-family:inherit">
+        SCAN HINZUFÜGEN →
+      </button>
+    </div>`
+    :`<div style="margin:0 12px" id="ferr"></div>`}
+
+    <!-- MANUELLE EINGABE -->
+    <details style="margin:12px">
+      <summary style="color:#37474f;font-size:9px;letter-spacing:1px;cursor:pointer;user-select:none;text-transform:uppercase">Manuelle Eingabe</summary>
+      <textarea id="ftxt" rows="6" style="margin-top:8px;background:#0d1219;border:1px solid #1e2836;
+        color:#90a4ae;padding:10px;border-radius:6px;font-family:'Courier New',monospace;
+        font-size:9px;width:100%;resize:vertical;outline:none;line-height:1.6"
+        placeholder="Symbol,Average True Range % (14) 1 Tag,..."></textarea>
+      <button onclick="applyTxt()" style="margin-top:6px;padding:8px 16px;background:#0d1219;
+        border:1px solid ${border};color:${acol};cursor:pointer;border-radius:6px;
+        font-size:10px;font-family:inherit;font-weight:700">ÜBERNEHMEN</button>
     </details>
-    <div class="schema" style="margin-top:14px"><div class="schema-ttl">Bewertungsschema</div>
-      ${[["ATR (14)%","<2.5→20 · 2.5–3.2→12 · 3.2–4.0→8 · >4.0→0"],["VOLA 1W %","<2.0→20 · 2.0–2.5→12 · >2.5→0"],["RATIO 1M/1W",">1.15→20 · 1.0–1.15→10 · <1.0→0 ⚠️"],["RELVOL","<0.7→20 · 0.7–1.2→10 · >1.2→0"],["RSI (14)","45–65→20 · 65–80→15 · sonst→0"]].map(([k,v])=>`<div class="schema-row"><span class="schema-k">${k}</span><span class="schema-v">${v}</span></div>`).join("")}
-    </div>
   </div>`;
-  document.getElementById("f-date").oninput=e=>U().form.date=e.target.value;
-  document.getElementById("f-label").oninput=e=>U().form.label=e.target.value;
-  const dz=document.getElementById("dz");
-  dz.ondragover=e=>{e.preventDefault();dz.classList.add("drag");};
-  dz.ondragleave=()=>dz.classList.remove("drag");
-  dz.ondrop=e=>{e.preventDefault();dz.classList.remove("drag");const fl=e.dataTransfer.files;if(fl.length===1)handleFile(fl[0]);else handleMultiFile(Array.from(fl));};
+
+  // File input handler
   document.getElementById("fi").onchange=function(e){
     const files=Array.from(e.target.files);
     if(!files.length)return;
-    if(files.length===1)handleFile(files[0]);
+    if(files.length===1) handleFile(files[0]);
     else handleMultiFile(files);
     this.value="";
+  };
+
+  // Drag & Drop
+  const dz=document.getElementById("dz");
+  dz.ondragover=e=>{e.preventDefault();dz.style.borderColor=acol;dz.style.background="rgba(0,232,122,.04)";};
+  dz.ondragleave=()=>{dz.style.borderColor=border;dz.style.background="#0d1219";};
+  dz.ondrop=e=>{
+    e.preventDefault();dz.style.borderColor=border;dz.style.background="#0d1219";
+    const fl=e.dataTransfer.files;
+    if(fl.length===1) handleFile(fl[0]);
+    else handleMultiFile(Array.from(fl));
   };
 }
 
