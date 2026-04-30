@@ -717,43 +717,38 @@ function renderUpload(){
   const acol=uni==="hard"?"#ffd54f":"#00e87a";
   const border=uni==="hard"?"rgba(255,213,79,.3)":"rgba(0,232,122,.3)";
 
-  el.innerHTML=`<div style="padding:0">
-    <!-- GROSSER UPLOAD-BUTTON — nimmt fast ganzen Screen ein -->
-    <div style="position:relative;margin:12px;border:2px dashed ${border};border-radius:12px;
-      background:#0d1219;min-height:180px;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;gap:10px;cursor:pointer;
-      transition:all .2s" id="dz">
-      <input type="file" id="fi" accept=".csv,text/csv" multiple
-        style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;z-index:2">
-      <div style="font-size:48px;pointer-events:none">${f.file?"✅":"📂"}</div>
-      <div style="color:${f.file?acol:"#90a4ae"};font-size:14px;font-weight:700;letter-spacing:1px;pointer-events:none">
-        ${f.file&&f.file!=="manual"?f.file:f.file==="manual"?"Manuell eingegeben":"CSV HOCHLADEN"}
-      </div>
-      <div style="color:#37474f;font-size:10px;pointer-events:none">
-        ${f.file?`${f.date} · ${f.time||"—"}  ·  Tippen zum Ersetzen`:"Tippe hier um eine CSV-Datei auszuwählen"}
-      </div>
+  el.innerHTML=`<div style="padding:12px">
+    <div style="color:${acol};font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:14px">
+      ${uni==="soft"?"🟢":"🟡"} NEUER SCAN — ${uni.toUpperCase()}
     </div>
 
-    <!-- STATUS / VORSCHAU -->
-    ${f.csv?`
-    <div style="margin:0 12px 12px;background:#060c14;border:1px solid #1e2836;border-radius:8px;padding:12px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-        <span style="color:#546e7a;font-size:9px;letter-spacing:1px">VORSCHAU</span>
-        <span style="color:#37474f;font-size:9px">${(f.csv.match(/\n/g)||[]).length} Zeilen</span>
+    <!-- UPLOAD BOX -->
+    <label for="fi" style="display:block;border:2px dashed ${border};border-radius:10px;
+      background:#0d1219;min-height:160px;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:8px;cursor:pointer;
+      text-align:center;padding:20px;margin-bottom:12px;transition:all .2s">
+      <div style="font-size:44px">${f.file?"✅":"📂"}</div>
+      <div style="color:${f.file?acol:"#90a4ae"};font-size:13px;font-weight:700;letter-spacing:1px">
+        ${f.file&&f.file!=="manual"?f.file:"CSV HOCHLADEN"}
       </div>
+      <div style="color:#37474f;font-size:10px">
+        ${f.file?`${f.date} · Tippen zum Ersetzen`:"Tippe hier zum Auswählen"}
+      </div>
+    </label>
+    <input type="file" id="fi" accept=".csv,text/csv" multiple style="display:none">
+
+    ${f.csv?`
+    <div style="background:#060c14;border:1px solid #1e2836;border-radius:6px;padding:10px;margin-bottom:10px">
+      <div style="color:#37474f;font-size:8px;letter-spacing:1px;margin-bottom:5px">VORSCHAU</div>
       <div style="color:#37474f;font-size:9px;white-space:pre;overflow-x:auto;line-height:1.6">${esc(f.csv.split("\n").slice(0,3).join("\n"))}…</div>
     </div>
-    <div style="margin:0 12px">
-      <div class="err" id="ferr" style="margin-bottom:6px"></div>
-      <button onclick="doAdd()" style="width:100%;padding:14px;background:${acol};color:#000;border:none;
-        border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;letter-spacing:1px;font-family:inherit">
-        SCAN HINZUFÜGEN →
-      </button>
-    </div>`
-    :`<div style="margin:0 12px" id="ferr"></div>`}
+    <div id="ferr" style="color:#ef5350;font-size:10px;margin-bottom:8px"></div>
+    <button onclick="doAdd()" style="width:100%;padding:13px;background:${acol};color:#000;border:none;
+      border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;letter-spacing:1px;font-family:inherit">
+      SCAN HINZUFÜGEN →
+    </button>`:`<div id="ferr"></div>`}
 
-    <!-- MANUELLE EINGABE -->
-    <details style="margin:12px">
+    <details style="margin-top:14px">
       <summary style="color:#37474f;font-size:9px;letter-spacing:1px;cursor:pointer;user-select:none;text-transform:uppercase">Manuelle Eingabe</summary>
       <textarea id="ftxt" rows="6" style="margin-top:8px;background:#0d1219;border:1px solid #1e2836;
         color:#90a4ae;padding:10px;border-radius:6px;font-family:'Courier New',monospace;
@@ -765,30 +760,31 @@ function renderUpload(){
     </details>
   </div>`;
 
-  // File input handler
-  document.getElementById("fi").onchange=function(e){
-    const files=Array.from(e.target.files);
-    if(!files.length)return;
+  document.getElementById("fi").addEventListener("change", function(){
+    const files=Array.from(this.files);
+    if(!files.length) return;
     if(files.length===1) handleFile(files[0]);
     else handleMultiFile(files);
     this.value="";
-  };
+  });
+}
 
-  // Drag & Drop
-  const dz=document.getElementById("dz");
-  dz.ondragover=e=>{e.preventDefault();dz.style.borderColor=acol;dz.style.background="rgba(0,232,122,.04)";};
-  dz.ondragleave=()=>{dz.style.borderColor=border;dz.style.background="#0d1219";};
-  dz.ondrop=e=>{
-    e.preventDefault();dz.style.borderColor=border;dz.style.background="#0d1219";
-    const fl=e.dataTransfer.files;
-    if(fl.length===1) handleFile(fl[0]);
-    else handleMultiFile(Array.from(fl));
+function handleFile(file){
+  const reader=new FileReader();
+  reader.onload=function(e){
+    const f=U().form;
+    f.csv=e.target.result;
+    f.file=file.name;
+    const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
+    f.date=dm?dm[1]:new Date().toISOString().slice(0,10);
+    if(!f.label) f.label=file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim();
+    renderUpload();
   };
+  reader.readAsText(file);
 }
 
 function handleMultiFile(files){
   let done=0;
-  const t=nowTime();
   files.forEach(file=>{
     const r=new FileReader();
     r.onload=function(ev){
@@ -797,13 +793,47 @@ function handleMultiFile(files){
         const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
         const date=dm?dm[1]:new Date().toISOString().slice(0,10);
         const label=file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim();
-        U().scans.push(buildScan(date,label,raw,t));
+        U().scans.push(buildScan(date,label,raw));
       }
       done++;
-      if(done===files.length){sortScansChronologically();saveU();expandedTicker=null;switchTab(0);}
+      if(done===files.length){
+        sortScansChronologically();
+        saveU();
+        expandedTicker=null;
+        switchTab(0);
+      }
     };
     r.readAsText(file);
   });
+}
+
+function applyTxt(){
+  const ta=document.getElementById("ftxt");
+  if(ta&&ta.value.trim()){
+    U().form.csv=ta.value;
+    U().form.file="manual";
+    U().form.date=new Date().toISOString().slice(0,10);
+    renderUpload();
+  }
+}
+
+function sortScansChronologically(){
+  U().scans.sort((a,b)=>a.date.localeCompare(b.date));
+  U().sel=U().scans.length-1;
+}
+
+function doAdd(){
+  const f=U().form;
+  const err=document.getElementById("ferr");
+  if(!f.csv){if(err)err.textContent="Keine Daten.";return;}
+  const raw=parseCSV(f.csv);
+  if(!raw.length){if(err)err.textContent="CSV konnte nicht geparst werden.";return;}
+  U().scans.push(buildScan(f.date,f.label||f.date,raw));
+  sortScansChronologically();
+  saveU();
+  U().form={date:new Date().toISOString().slice(0,10),label:"",csv:"",file:""};
+  expandedTicker=null;
+  switchTab(0);
 }
 
 // ── MANAGE ──
