@@ -722,20 +722,21 @@ function renderUpload(){
       ${uni==="soft"?"🟢":"🟡"} NEUER SCAN — ${uni.toUpperCase()}
     </div>
 
-    <!-- UPLOAD BOX -->
-    <label for="fi" style="display:block;border:2px dashed ${border};border-radius:10px;
-      background:#0d1219;min-height:160px;display:flex;flex-direction:column;
+    <input type="file" id="fi" accept=".csv,text/csv" multiple style="display:none">
+
+    <!-- UPLOAD BUTTON -->
+    <button id="pick-btn" style="width:100%;border:2px dashed ${border};border-radius:10px;
+      background:#0d1219;min-height:140px;display:flex;flex-direction:column;
       align-items:center;justify-content:center;gap:8px;cursor:pointer;
-      text-align:center;padding:20px;margin-bottom:12px;transition:all .2s">
-      <div style="font-size:44px">${f.file?"✅":"📂"}</div>
+      text-align:center;padding:20px;margin-bottom:10px;font-family:inherit">
+      <div style="font-size:40px">${f.file?"✅":"📂"}</div>
       <div style="color:${f.file?acol:"#90a4ae"};font-size:13px;font-weight:700;letter-spacing:1px">
         ${f.file&&f.file!=="manual"?f.file:"CSV HOCHLADEN"}
       </div>
       <div style="color:#37474f;font-size:10px">
-        ${f.file?`${f.date} · Tippen zum Ersetzen`:"Tippe hier zum Auswählen"}
+        ${f.file?`${f.date} · Tippen zum Ersetzen`:"Tippen um Datei zu wählen"}
       </div>
-    </label>
-    <input type="file" id="fi" accept=".csv,text/csv" multiple style="display:none">
+    </button>
 
     ${f.csv?`
     <div style="background:#060c14;border:1px solid #1e2836;border-radius:6px;padding:10px;margin-bottom:10px">
@@ -760,7 +761,16 @@ function renderUpload(){
     </details>
   </div>`;
 
-  document.getElementById("fi").addEventListener("change", function(){
+  // Datei-Input — Button öffnet den picker
+  const fi=document.getElementById("fi");
+  const btn=document.getElementById("pick-btn");
+
+  btn.addEventListener("click", function(e){
+    e.preventDefault();
+    fi.click();
+  });
+
+  fi.addEventListener("change", function(){
     const files=Array.from(this.files);
     if(!files.length) return;
     if(files.length===1) handleFile(files[0]);
