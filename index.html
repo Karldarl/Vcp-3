@@ -714,108 +714,61 @@ function renderCompare(){
 function renderUpload(){
   const el=document.getElementById("tab2");
   const f=U().form;
+  const acol=uni==="hard"?"#ffd54f":"#00e87a";
   el.innerHTML=`<div class="upload-wrap">
     <div class="upload-title${uni==="hard"?" hard":""}">${uni==="soft"?"🟢":"🟡"} NEUER SCAN — ${uni.toUpperCase()}</div>
-    <div style="display:flex;gap:8px">
-      <div class="field" style="flex:2"><label>Datum</label><input type="date" id="f-date" value="${f.date}"></div>
-      <div class="field" style="flex:1"><label>Uhrzeit</label><input type="time" id="f-time" value="${f.time||""}" placeholder="09:30"></div>
-    </div>
-    <div class="field"><label>Label (optional)</label><input type="text" id="f-label" placeholder="z.B. Di KW18" value="${f.label}"></div>
-    <div class="drop-zone${f.file?" ready":""}" id="dz" onclick="document.getElementById('fi').click()">
+    <div class="field"><label>Datum (automatisch aus Dateiname)</label><input type="date" id="f-date" value="${f.date}"></div>
+    <div class="field"><label>Label (optional)</label><input type="text" id="f-label" placeholder="z.B. Morgen-Scan" value="${f.label||""}"></div>
+    <div id="dz" class="drop-zone${f.file?" ready":""}" style="position:relative;margin-bottom:10px">
       <div class="drop-icon">📂</div>
-      <div class="drop-main${f.file?" ok":""}">${f.file?`✓ ${f.file}<br><span class="drop-sub">Tippen zum Ersetzen</span>`:"CSV-Datei tippen oder ablegen"}</div>
-      ${!f.file?`<div class="drop-sub" style="margin-top:4px">Symbol, ATR, Volatilität 1W/1M, RSI, Rel.Vol, Sektor</div>`:""}
+      <div class="drop-main${f.file?" ok":""}">${f.file&&f.file!=="manual"?`✓ ${f.file}`:f.file==="manual"?"✓ Manuell eingegeben":"CSV tippen zum Auswählen"}</div>
+      <div class="drop-sub" style="margin-top:2px">${f.file?`Uhrzeit: ${f.time||"—"} · Tippen zum Ersetzen`:"Datum & Uhrzeit werden automatisch gesetzt"}</div>
+      <input type="file" id="fi" accept=".csv,text/csv" multiple style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%">
     </div>
-    <input type="file" id="fi" accept=".csv,text/csv" style="display:none" multiple>
-    ${f.csv?`<div class="preview"><div class="preview-lbl">Vorschau</div><div class="preview-txt">${esc(f.csv.split("\n").slice(0,4).join("\n"))}${f.csv.split("\n").length>4?"\n…":""}</div></div>`:""}
+    ${f.csv?`<div class="preview"><div class="preview-lbl">Vorschau</div><div class="preview-txt">${esc(f.csv.split("\n").slice(0,3).join("\n"))}…</div></div>`:""}
     <div class="err" id="ferr"></div>
     <button class="btn-add${uni==="hard"?" hard":""}" onclick="doAdd()" ${!f.csv?"disabled":""}>SCAN HINZUFÜGEN →</button>
-    <details><summary>Manuelle CSV-Eingabe</summary>
-      <textarea id="ftxt" rows="7" placeholder="Symbol,Average True Range % (14) 1 Tag,...">${esc(f.csv)}</textarea>
-      <button onclick="applyTxt()" style="margin-top:5px;padding:6px 13px;background:#111;border:1px solid #222;color:#00ff9d;cursor:pointer;border-radius:4px;font-size:10px;font-family:inherit;">ÜBERNEHMEN</button>
+    <details style="margin-top:12px"><summary>Manuelle Eingabe</summary>
+      <textarea id="ftxt" rows="6" placeholder="Symbol,Average True Range % (14) 1 Tag,..."></textarea>
+      <button onclick="applyTxt()" style="margin-top:5px;padding:6px 13px;background:#0d1219;border:1px solid #1e2836;color:${acol};cursor:pointer;border-radius:4px;font-size:10px;font-family:inherit;">ÜBERNEHMEN</button>
     </details>
-    <div class="schema"><div class="schema-ttl">Bewertungsschema</div>
+    <div class="schema" style="margin-top:14px"><div class="schema-ttl">Bewertungsschema</div>
       ${[["ATR (14)%","<2.5→20 · 2.5–3.2→12 · 3.2–4.0→8 · >4.0→0"],["VOLA 1W %","<2.0→20 · 2.0–2.5→12 · >2.5→0"],["RATIO 1M/1W",">1.15→20 · 1.0–1.15→10 · <1.0→0 ⚠️"],["RELVOL","<0.7→20 · 0.7–1.2→10 · >1.2→0"],["RSI (14)","45–65→20 · 65–80→15 · sonst→0"]].map(([k,v])=>`<div class="schema-row"><span class="schema-k">${k}</span><span class="schema-v">${v}</span></div>`).join("")}
     </div>
   </div>`;
   document.getElementById("f-date").oninput=e=>U().form.date=e.target.value;
-  document.getElementById("f-time").oninput=e=>U().form.time=e.target.value;
   document.getElementById("f-label").oninput=e=>U().form.label=e.target.value;
   const dz=document.getElementById("dz");
   dz.ondragover=e=>{e.preventDefault();dz.classList.add("drag");};
   dz.ondragleave=()=>dz.classList.remove("drag");
-  dz.ondrop=e=>{e.preventDefault();dz.classList.remove("drag");handleFile(e.dataTransfer.files[0]);};
-  document.getElementById("fi").onchange=e=>{
+  dz.ondrop=e=>{e.preventDefault();dz.classList.remove("drag");const fl=e.dataTransfer.files;if(fl.length===1)handleFile(fl[0]);else handleMultiFile(Array.from(fl));};
+  document.getElementById("fi").onchange=function(e){
     const files=Array.from(e.target.files);
-    if(files.length===1){handleFile(files[0]);return;}
-    // Mehrere Dateien: alle einlesen, dann chronologisch einfügen
-    let done=0;
-    files.forEach(file=>{
-      const r=new FileReader();
-      r.onload=ev=>{
-        const raw=parseCSV(ev.target.result);
-        if(raw.length){
-          const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
-          const date=dm?dm[1]:new Date().toISOString().slice(0,10);
-          const label=file.name.replace(/\.csv$/i,"").replace(/_/g," ");
-          const tm=file.name.match(/[_\-T](\d{2})[:\-](\d{2})/);
-          const time=tm?`${tm[1]}:${tm[2]}`:nowTime();
-          const sc=buildScan(date,label,raw,time);
-          if(!U().scans.some(s=>s.date===date&&s.time===time)){
-            U().scans.push(sc);
-          }
-        }
-        done++;
-        if(done===files.length){
-          sortScansChronologically();
-          saveU();
-          expandedTicker=null;
-          switchTab(0);
-        }
-      };
-      r.readAsText(file);
-    });
+    if(!files.length)return;
+    if(files.length===1)handleFile(files[0]);
+    else handleMultiFile(files);
+    this.value="";
   };
 }
-function esc(s){return(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
-function nowTime(){
-  const n=new Date();
-  return n.getHours().toString().padStart(2,"0")+":"+n.getMinutes().toString().padStart(2,"0");
-}
-function handleFile(file){
-  if(!file)return;
-  const uploadTime=nowTime(); // Uhrzeit des Uploads festhalten
-  const r=new FileReader();
-  r.onload=e=>{
-    const f=U().form;
-    f.csv=e.target.result;
-    f.file=file.name;
-    // Datum aus Dateiname
-    const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
-    if(dm)f.date=dm[1];
-    // Uhrzeit: erst aus Dateiname, sonst Upload-Zeit
-    const tm=file.name.match(/[_\-T](\d{2})[:\-](\d{2})/);
-    f.time=tm?`${tm[1]}:${tm[2]}`:uploadTime;
-    if(!f.label)f.label=file.name.replace(/\.csv$/i,"").replace(/_/g," ");
-    renderUpload();
-  };
-  r.readAsText(file);
-}
-function doAdd(){
-  const f=U().form;
-  f.date=document.getElementById("f-date")?.value||f.date;
-  f.time=document.getElementById("f-time")?.value||f.time||nowTime();
-  f.label=document.getElementById("f-label")?.value||f.label;
-  const err=document.getElementById("ferr");
-  if(!f.csv){err.textContent="Keine Daten.";return;}
-  const raw=parseCSV(f.csv);
-  if(!raw.length){err.textContent="CSV konnte nicht geparst werden.";return;}
-  const sc=buildScan(f.date,f.label,raw,f.time);
-  U().scans.push(sc);
-  sortScansChronologically();
-  saveU();
-  U().form={date:new Date().toISOString().slice(0,10),label:"",csv:"",file:"",time:""};
-  expandedTicker=null;switchTab(0);
+
+function handleMultiFile(files){
+  let done=0;
+  const t=nowTime();
+  files.forEach(file=>{
+    const r=new FileReader();
+    r.onload=function(ev){
+      const raw=parseCSV(ev.target.result);
+      if(raw.length){
+        const dm=file.name.match(/(\d{4}-\d{2}-\d{2})/);
+        const date=dm?dm[1]:new Date().toISOString().slice(0,10);
+        const label=file.name.replace(/\.csv$/i,"").replace(/[_]/g," ").trim();
+        U().scans.push(buildScan(date,label,raw,t));
+      }
+      done++;
+      if(done===files.length){sortScansChronologically();saveU();expandedTicker=null;switchTab(0);}
+    };
+    r.readAsText(file);
+  });
 }
 
 // ── MANAGE ──
