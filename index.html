@@ -373,7 +373,15 @@ function parseCSV(text){
   return lines.slice(1).map(line=>{
     const cols=splitLine(line);
     const row={};hdrs.forEach((h,i)=>{row[h]=(cols[i]||"").replace(/^"|"$/g,"").trim();});
-    const n=(...keys)=>{for(const k of keys){if(row[k]!==undefined){const v=parseFloat(row[k]);if(!isNaN(v))return v;}const fk=Object.keys(row).find(rk=>rk.includes(k));if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}}return null;};
+    const n=(...keys)=>{
+      // Erst exakter Match
+      for(const k of keys){if(row[k]!==undefined){const v=parseFloat(row[k]);if(!isNaN(v))return v;}}
+      // Dann lowercase exakter Match
+      for(const k of keys){const fk=Object.keys(row).find(rk=>rk.toLowerCase()===k);if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}}
+      // Dann partial Match (letzter Ausweg)
+      for(const k of keys){const fk=Object.keys(row).find(rk=>rk.toLowerCase().includes(k)&&!rk.toLowerCase().includes("währung"));if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}}
+      return null;
+    };
     const atr=n("atr","average true range % (14) 1 tag","average true range");
     const v1w=n("vola1w","v1w","volatilität 1 woche","volatilitat 1 woche","vola 1w");
     const v1m=n("vola1m","v1m","volatilität 1 monat","volatilitat 1 monat","vola 1m");
@@ -382,9 +390,9 @@ function parseCSV(text){
     const rat=n("ratio")??(v1m&&v1w?v1m/v1w:null);
     const t=(row.ticker||row.symbol||"").toUpperCase();
     const sec=row.sector||row.sektor||row.branche||row["sektor"]||"";
-    const price=n("preis","letzter","last","price","close","schlusskurs");
-    const sma50=n("einfacher gleitender durchschnitt (50) 1 tag","sma(50)","sma50","sma 50","gleitender durchschnitt (50)","einfacher gleitender durchschnitt (50)");
-    const high52w=n("hoch 52 wochen","52-wochen-hoch","52w-hoch","52w high","hoch 52w","52-week high","52 wochen hoch");
+    const price=n("Preis","preis","letzter","last","price","close","schlusskurs");
+    const sma50=n("Einfacher gleitender Durchschnitt (50) 1 Tag","einfacher gleitender durchschnitt (50) 1 tag","sma(50)","sma50","sma 50");
+    const high52w=n("Hoch 52 Wochen","hoch 52 wochen","52-wochen-hoch","52w-hoch","52-week high");
     if(!t)return null;
     return{t,atr,v1w,v1m,ratio:rat,rv,rsi,sec,price,sma50,high52w};
   }).filter(Boolean);
