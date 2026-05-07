@@ -381,9 +381,12 @@ function parseCSV(text){
     const rsi=n("rsi","relative strength index (14) 1 tag","relative strength index");
     const rat=n("ratio")??(v1m&&v1w?v1m/v1w:null);
     const t=(row.ticker||row.symbol||"").toUpperCase();
-    const sec=row.sector||row.sektor||row.branche||"";
+    const sec=row.sector||row.sektor||row.branche||row["sektor"]||"";
+    const price=n("preis","letzter","last","price","close","schlusskurs");
+    const sma50=n("einfacher gleitender durchschnitt (50) 1 tag","sma(50)","sma50","sma 50","gleitender durchschnitt (50)","einfacher gleitender durchschnitt (50)");
+    const high52w=n("hoch 52 wochen","52-wochen-hoch","52w-hoch","52w high","hoch 52w","52-week high","52 wochen hoch");
     if(!t)return null;
-    return{t,atr,v1w,v1m,ratio:rat,rv,rsi,sec};
+    return{t,atr,v1w,v1m,ratio:rat,rv,rsi,sec,price,sma50,high52w};
   }).filter(Boolean);
 }
 
