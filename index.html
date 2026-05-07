@@ -352,9 +352,10 @@ function pRV(v){if(v==null)return 0;if(v<0.7)return 20;if(v<=1.2)return 10;retur
 function pRSI(v){if(v==null)return 0;if(v>=45&&v<=65)return 20;if(v>65&&v<=80)return 15;return 0;}
 function score(s){
   const r=ratio(s);
-  return pATR(s.atr)+pV1W(s.v1w)+pRAT(r)+pRV(s.rv)+pRSI(s.rsi);
+  // Gewichtung: ATR×1.5, Vola1W×1.5, RelVol×1.0, Ratio×0.5, RSI×0.5 → max 100
+  return Math.round(pATR(s.atr)*1.5 + pV1W(s.v1w)*1.5 + pRV(s.rv)*1.0 + pRAT(r)*0.5 + pRSI(s.rsi)*0.5);
 }
-function scoreColor(n){if(n>=80)return"#00ff9d";if(n>=60)return"#f5c518";if(n>=40)return"#ff9944";return"#ff4444";}
+function scoreColor(n){if(n>=85)return"#00e87a";if(n>=65)return"#ffd54f";if(n>=40)return"#ffb74d";return"#ef5350";}
 function badgeCls(pts){const p=pts/20;if(p>=0.9)return"badge b-green";if(p>=0.5)return"badge b-yellow";return"badge b-red";}
 
 // ════════════════════════════════════════════════════════════════
@@ -420,7 +421,7 @@ function calcBadges(ticker){
   const N=hist.length;
   const badges=[];
 
-  // ── SQUEEZE: Score>85 UND RV<0.5 — mind. 2 Tage in Folge ──
+  // ── SQUEEZE ──
   if(N>=2){
     let streak=0;
     for(let i=N-1;i>=0;i--){
@@ -429,65 +430,93 @@ function calcBadges(ticker){
       else break;
     }
     if(streak>=2) badges.push({
-      id:"squeeze",
-      icon:"🔴",
-      label:"SQUEEZE",
-      tip:`Score>85 & RV<0.5 seit ${streak} Tag${streak>1?"en":""}`,
-      col:"#ef5350",
-      bg:"rgba(239,83,80,.12)",
-      border:"rgba(239,83,80,.35)"
+      id:"squeeze",icon:"🔴",short:"SQZ",
+      title:"🔴 SQUEEZE — Ruhe vor dem Sturm",
+      body:`Hohe Punktzahl trifft auf sehr wenig Volumen (RelVol < 0.5) – seit ${streak} Tagen.\n\nKeiner will mehr verkaufen. Die Aktie ist "trocken" und bereit für einen explosiven Sprung nach oben.`,
+      col:"#ef5350",bg:"rgba(239,83,80,.12)",border:"rgba(239,83,80,.4)"
     });
   }
 
-  // ── TIGHTNESS: Ratio<1.0 — 3 Tage in Folge, fallend ──
+  // ── TIGHTNESS ──
   if(N>=3){
     const last3=hist.slice(-3);
     const allBelow=last3.every(h=>h.ratio!=null&&h.ratio<1.0);
-    const falling=last3[2].ratio<=last3[0].ratio; // Tag3 ≤ Tag1
+    const falling=last3[2].ratio<=last3[0].ratio;
     if(allBelow&&falling) badges.push({
-      id:"tightness",
-      icon:"🟡",
-      label:"TIGHTNESS",
-      tip:`Ratio<1.0 × 3 Tage, fallend (${last3[0].ratio?.toFixed(2)}→${last3[2].ratio?.toFixed(2)})`,
-      col:"#ffd54f",
-      bg:"rgba(255,213,79,.12)",
-      border:"rgba(255,213,79,.35)"
+      id:"tightness",icon:"🟡",short:"TGT",
+      title:"🟡 TIGHTNESS — Maximale Enge",
+      body:`Die tägliche Schwankung (ATR) ist seit 3 Tagen kleiner als der Wochendurchschnitt (Ratio < 1.0).\nTrend: ${last3[0].ratio?.toFixed(2)} → ${last3[2].ratio?.toFixed(2)}\n\nInstitutionen kontrollieren den Preis extrem genau. Das Risiko für einen Rücksetzer ist hier am geringsten.`,
+      col:"#ffd54f",bg:"rgba(255,213,79,.12)",border:"rgba(255,213,79,.4)"
     });
   }
 
-  // ── ACCUMULATION: RSI steigt, Ratio sinkt/stabil, Ratio<1.2 ──
+  // ── ACCUMULATION ──
   if(N>=3){
-    const ref=hist[Math.max(0,N-4)]; // vor 3 Tagen (oder ältester)
+    const ref=hist[Math.max(0,N-4)];
     const cur=hist[N-1];
     const rsiUp=cur.rsi!=null&&ref.rsi!=null&&cur.rsi>ref.rsi;
     const ratioDown=cur.ratio!=null&&ref.ratio!=null&&cur.ratio<=ref.ratio;
     const ratioOk=cur.ratio!=null&&cur.ratio<1.2;
     if(rsiUp&&ratioDown&&ratioOk) badges.push({
-      id:"accum",
-      icon:"🟢",
-      label:"ACCUMULATION",
-      tip:`RSI ↑ ${ref.rsi?.toFixed(0)}→${cur.rsi?.toFixed(0)}, Ratio ↓ ${ref.ratio?.toFixed(2)}→${cur.ratio?.toFixed(2)}`,
-      col:"#00e87a",
-      bg:"rgba(0,232,122,.12)",
-      border:"rgba(0,232,122,.35)"
+      id:"accum",icon:"🟢",short:"ACC",
+      title:"🟢 ACCUMULATION — Stilles Sammeln",
+      body:`Kaufdruck (RSI) steigt: ${ref.rsi?.toFixed(0)} → ${cur.rsi?.toFixed(0)}\nVolatilität (Ratio) bleibt am Boden: ${ref.ratio?.toFixed(2)} → ${cur.ratio?.toFixed(2)}\n\nProfis kaufen heimlich große Mengen auf, ohne den Kurs hektisch zu machen. Ein sehr bullisches Zeichen.`,
+      col:"#00e87a",bg:"rgba(0,232,122,.12)",border:"rgba(0,232,122,.4)"
     });
   }
 
   return badges;
 }
 
+function showBadgePopup(id){
+  // Alle offenen Popups schließen
+  document.querySelectorAll(".badge-popup").forEach(p=>p.remove());
+  const badge=_lastBadges&&_lastBadges[id];
+  if(!badge)return;
+  const popup=document.createElement("div");
+  popup.className="badge-popup";
+  popup.style.cssText=`position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:#111620;border:1px solid ${badge.border};border-radius:10px;
+    padding:18px;max-width:300px;width:88%;z-index:1000;
+    box-shadow:0 8px 32px rgba(0,0,0,.8)`;
+  popup.innerHTML=`
+    <div style="font-size:13px;font-weight:700;color:${badge.col};margin-bottom:10px;line-height:1.4">${badge.title}</div>
+    <div style="font-size:11px;color:#90a4ae;line-height:1.7;white-space:pre-wrap">${badge.body}</div>
+    <button onclick="document.querySelectorAll('.badge-popup').forEach(p=>p.remove())"
+      style="margin-top:14px;width:100%;padding:9px;background:${badge.bg};border:1px solid ${badge.border};
+             color:${badge.col};border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;font-family:inherit">
+      SCHLIESSEN
+    </button>`;
+  // Backdrop
+  const bd=document.createElement("div");
+  bd.style.cssText="position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:999";
+  bd.onclick=()=>{popup.remove();bd.remove();};
+  document.body.appendChild(bd);
+  document.body.appendChild(popup);
+}
+
+let _lastBadges={};
+
 function renderBadges(ticker,compact=false){
   const badges=calcBadges(ticker);
+  // Badges global speichern für Popup-Zugriff
+  badges.forEach(b=>{_lastBadges[b.id]=b;});
   if(!badges.length) return "";
   if(compact){
-    return badges.map(b=>`<span title="${b.tip}" style="font-size:12px;cursor:help">${b.icon}</span>`).join("");
+    return badges.map(b=>
+      `<span onclick="event.stopPropagation();showBadgePopup('${b.id}')"
+        style="font-size:11px;cursor:pointer;margin-left:2px" title="${b.short}">${b.icon}</span>`
+    ).join("");
   }
   return`<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px">${
-    badges.map(b=>`<div title="${b.tip}" style="display:inline-flex;align-items:center;gap:4px;
-      padding:3px 8px;border-radius:4px;background:${b.bg};border:1px solid ${b.border};cursor:help">
-      <span style="font-size:11px">${b.icon}</span>
-      <span style="color:${b.col};font-size:9px;font-weight:700;letter-spacing:.5px">${b.label}</span>
-    </div>`).join("")
+    badges.map(b=>`
+      <button onclick="showBadgePopup('${b.id}')"
+        style="display:inline-flex;align-items:center;gap:4px;padding:4px 9px;
+               border-radius:5px;background:${b.bg};border:1px solid ${b.border};
+               cursor:pointer;font-family:inherit">
+        <span style="font-size:11px">${b.icon}</span>
+        <span style="color:${b.col};font-size:9px;font-weight:700;letter-spacing:.5px">${b.short}</span>
+      </button>`).join("")
   }</div>`;
 }
 
@@ -826,6 +855,62 @@ function renderTop10(){
   ${renderInfoCards(top10)}`;
 }
 
+
+// ════════════════════════════════════════════════════════════════
+// POSITION — SMA50 & 52W-Hoch Abstände
+// ════════════════════════════════════════════════════════════════
+function calcPosition(s){
+  const r={sma50pct:null,high52pct:null,sma50col:null,high52col:null,pivot:false};
+  if(s.price!=null&&s.sma50!=null&&s.sma50>0){
+    r.sma50pct=((s.price-s.sma50)/s.sma50)*100;
+    if(r.sma50pct>=2&&r.sma50pct<=10) r.sma50col="#00e87a";
+    else if(r.sma50pct>10&&r.sma50pct<=20) r.sma50col="#ffd54f";
+    else r.sma50col="#ef5350";
+  }
+  if(s.price!=null&&s.high52w!=null&&s.high52w>0){
+    r.high52pct=((s.price-s.high52w)/s.high52w)*100;
+    const abs=Math.abs(r.high52pct);
+    if(abs<=5) r.high52col="#00e87a";
+    else if(abs<=15) r.high52col="#ffd54f";
+    else r.high52col="#ef5350";
+  }
+  r.pivot=(r.sma50col==="#00e87a"&&r.high52col==="#00e87a");
+  return r;
+}
+
+function renderPositionBar(s){
+  const p=calcPosition(s);
+  if(p.sma50pct===null&&p.high52pct===null) return "";
+  const items=[];
+  if(p.sma50pct!==null){
+    const sign=p.sma50pct>=0?"+":"";
+    const label=p.sma50pct>=2&&p.sma50pct<=10?"Ideal":p.sma50pct>10?"Extended":"Unter MA";
+    items.push(`<div style="display:flex;align-items:center;gap:5px;flex:1;min-width:120px;
+      padding:6px 9px;background:#0a0e14;border:1px solid ${p.sma50col}33;border-radius:5px">
+      <div style="width:6px;height:6px;border-radius:50%;background:${p.sma50col};flex-shrink:0"></div>
+      <div>
+        <div style="color:#546e7a;font-size:7px;letter-spacing:1px;text-transform:uppercase">SMA 50</div>
+        <div style="color:${p.sma50col};font-size:12px;font-weight:700">${sign}${p.sma50pct.toFixed(1)}%</div>
+      </div>
+      <div style="color:#37474f;font-size:8px;margin-left:auto">${label}</div>
+    </div>`);
+  }
+  if(p.high52pct!==null){
+    const abs=Math.abs(p.high52pct);
+    const label=abs<=5?"Pivot-Nah":abs<=15?"Kontraktion":"Zu Weit";
+    items.push(`<div style="display:flex;align-items:center;gap:5px;flex:1;min-width:120px;
+      padding:6px 9px;background:#0a0e14;border:1px solid ${p.high52col}33;border-radius:5px">
+      <div style="width:6px;height:6px;border-radius:50%;background:${p.high52col};flex-shrink:0"></div>
+      <div>
+        <div style="color:#546e7a;font-size:7px;letter-spacing:1px;text-transform:uppercase">52W-HOCH</div>
+        <div style="color:${p.high52col};font-size:12px;font-weight:700">-${abs.toFixed(1)}%</div>
+      </div>
+      <div style="color:#37474f;font-size:8px;margin-left:auto">${label}</div>
+    </div>`);
+  }
+  return`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${items.join("")}</div>`;
+}
+
 function buildDetail(s,sc){
   const hist=getHistory(s.t);
   const r=ratio(s);
@@ -849,6 +934,7 @@ function buildDetail(s,sc){
       <span style="color:#37474f;font-size:8px">${hist.length} Scan${hist.length!==1?"s":""}</span>
     </div>
     ${renderBadges(s.t,false)}
+    ${renderPositionBar(s)}
     ${stats}
     ${buildCharts(s.t)}`;
 }
