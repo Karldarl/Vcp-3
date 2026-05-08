@@ -399,7 +399,12 @@ function parseCSV(text){
 }
 
 function buildScan(date,label,raw,time=""){
-  const stocks=raw.map(s=>({...s,ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null)}));
+  const stocks=raw.map(s=>({
+    t:s.t, atr:s.atr, v1w:s.v1w, v1m:s.v1m,
+    ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null),
+    rv:s.rv, rsi:s.rsi, sec:s.sec,
+    price:s.price??null, sma50:s.sma50??null, high52w:s.high52w??null
+  }));
   stocks.sort((a,b)=>score(b)-score(a));
   const top=stocks.slice(0,10);
   const map={};top.forEach(s=>{if(s.sec)map[s.sec]=(map[s.sec]||[]).concat(s.t);});
@@ -437,13 +442,13 @@ function calcBadges(ticker){
     let streak=0;
     for(let i=N-1;i>=0;i--){
       const h=hist[i];
-      if(h.score>85&&h.rv!=null&&h.rv<0.5) streak++;
+      if(h.score>=75&&h.rv!=null&&h.rv<0.5) streak++;
       else break;
     }
     if(streak>=2) badges.push({
       id:"squeeze",icon:"🔴",short:"SQZ",
       title:"🔴 SQUEEZE — Ruhe vor dem Sturm",
-      body:`Hohe Punktzahl trifft auf sehr wenig Volumen (RelVol < 0.5) – seit ${streak} Tagen.\n\nKeiner will mehr verkaufen. Die Aktie ist "trocken" und bereit für einen explosiven Sprung nach oben.`,
+      body:`Score ≥75 & RelVol <0.5 seit ${streak} Tag${streak>1?"en":""}.\n\nKeiner will mehr verkaufen. Die Aktie ist "trocken" und bereit für einen explosiven Sprung nach oben.`,
       col:"#ef5350",bg:"rgba(239,83,80,.12)",border:"rgba(239,83,80,.4)"
     });
   }
