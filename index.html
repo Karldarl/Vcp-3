@@ -421,7 +421,8 @@ function getHistory(ticker){
     const s=sc.stocks.find(x=>x.t===ticker);
     if(!s)return null;
     const r=ratio(s);
-    return{date:sc.date,label:sc.label,atr:s.atr,v1w:s.v1w,rsi:s.rsi,rv:s.rv,ratio:r,score:score(s)};
+    const sma50pct=(s.price!=null&&s.sma50!=null&&s.sma50>0)?((s.price-s.sma50)/s.sma50*100):null;
+    return{date:sc.date,label:sc.label,atr:s.atr,v1w:s.v1w,rsi:s.rsi,rv:s.rv,ratio:r,score:score(s),sma50pct,price:s.price,sma50:s.sma50,high52w:s.high52w};
   }).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date));
   // Pro Datum nur einen Eintrag — letzter Scan des Tages
   const byDate={};
@@ -479,6 +480,45 @@ function calcBadges(ticker){
       body:`Kaufdruck (RSI) steigt: ${ref.rsi?.toFixed(0)} → ${cur.rsi?.toFixed(0)}\nVolatilität (Ratio) bleibt am Boden: ${ref.ratio?.toFixed(2)} → ${cur.ratio?.toFixed(2)}\n\nProfis kaufen heimlich große Mengen auf, ohne den Kurs hektisch zu machen. Ein sehr bullisches Zeichen.`,
       col:"#00e87a",bg:"rgba(0,232,122,.12)",border:"rgba(0,232,122,.4)"
     });
+  }
+
+  // ── COMPRESSION: SMA50-Abstand sinkt 3 Tage + bleibt 2-10% + Ratio<1.15 ──
+  if(N>=3){
+    const last3=hist.slice(-3);
+    const hasSma=last3.every(h=>h.sma50pct!=null);
+    if(hasSma){
+      const falling=last3[2].sma50pct<last3[0].sma50pct; // Abstand sinkt
+      const inRange=last3.every(h=>h.sma50pct>=2&&h.sma50pct<=12); // gesunde Zone
+      const ratioOk=hist[N-1].ratio!=null&&hist[N-1].ratio<1.15;
+      const scoreOk=hist[N-1].score>40;
+      if(falling&&inRange&&ratioOk&&scoreOk) badges.push({
+        id:"compression",icon:"🔵",short:"CMP",
+        title:"🔵 COMPRESSION — Feder wird gespannt",
+        body:`SMA50-Abstand sinkt: ${last3[0].sma50pct?.toFixed(1)}%→${last3[2].sma50pct?.toFixed(1)}%
+Ratio: ${hist[N-1].ratio?.toFixed(2)} (<1.15)
+
+Kurs und gleitender Durchschnitt laufen aufeinander zu. Die Kontraktion verdichtet sich — kurz vor dem Ausbruch.`,
+        col:"#29b6f6",bg:"rgba(41,182,246,.12)",border:"rgba(41,182,246,.4)"
+      });
+    }
+  }
+
+  // ── COMPRESSION: SMA50-Abstand sinkt 3 Tage + bleibt 2-10% + Ratio<1.15 ──
+  if(N>=3){
+    const last3=hist.slice(-3);
+    const hasSma=last3.every(h=>h.sma50pct!=null);
+    if(hasSma){
+      const falling=last3[2].sma50pct<last3[0].sma50pct; // Abstand sinkt
+      const inRange=last3.every(h=>h.sma50pct>=2&&h.sma50pct<=10); // gesunde Zone
+      const ratioOk=hist[N-1].ratio!=null&&hist[N-1].ratio<1.15;
+      const scoreOk=hist[N-1].score>40;
+      if(falling&&inRange&&ratioOk&&scoreOk) badges.push({
+        id:"compression",icon:"🔵",short:"CMP",
+        title:"🔵 COMPRESSION — Feder wird gespannt",
+        body:`SMA50-Abstand sinkt: ${last3[0].sma50pct?.toFixed(1)}%→${last3[2].sma50pct?.toFixed(1)}% (Zone: 2–10%)\nRatio: ${hist[N-1].ratio?.toFixed(2)} <1.15\n\nKurs und gleitender Durchschnitt laufen aufeinander zu. Die Feder wird gespannt — klassisches VCP-Verhalten kurz vor dem Ausbruch.`,
+        col:"#29b6f6",bg:"rgba(41,182,246,.12)",border:"rgba(41,182,246,.4)"
+      });
+    }
   }
 
   return badges;
@@ -595,6 +635,13 @@ function buildCharts(ticker){
   const vPts=v1ws.map((v,i)=>`${px(i).toFixed(1)},${py(v,vn,vx,H1).toFixed(1)}`).join(" ");
   const lAY=py(atrs[N-1],vn,vx,H1),lVY=py(v1ws[N-1],vn,vx,H1);
 
+  // SMA50-Abstand Linie (zweite Y-Achse: 0-20%)
+  const sma50pcts=hist.map(h=>h.sma50pct);
+  const hasSma50=sma50pcts.some(v=>v!=null);
+  const [sm0,sm1]=hasSma50?mm(sma50pcts.filter(v=>v!=null)):[0,20];
+  const smPts=sma50pcts.map((v,i)=>v!=null?`${px(i).toFixed(1)},${py(v,Math.min(sm0,0),Math.max(sm1,15),H1).toFixed(1)}`:null).filter(Boolean).join(" ");
+  const lastSmY=sma50pcts[N-1]!=null?py(sma50pcts[N-1],Math.min(sm0,0),Math.max(sm1,15),H1):null;
+
   const svg1=svg(H1,`
     ${vGrid}
     <polygon points="${aTop} ${vBot}" fill="rgba(41,182,246,.06)"/>
@@ -602,6 +649,9 @@ function buildCharts(ticker){
     ${atrs.map((v,i)=>cr(px(i).toFixed(1),py(v,vn,vx,H1).toFixed(1),"#29b6f6")).join("")}
     ${pl(vPts,"#ffb74d",2)}
     ${v1ws.map((v,i)=>cr(px(i).toFixed(1),py(v,vn,vx,H1).toFixed(1),"#ffb74d")).join("")}
+    ${hasSma50&&smPts?pl(smPts,"#ce93d8",1.5,"4,2"):""}
+    ${hasSma50&&smPts?sma50pcts.map((v,i)=>v!=null?cr(px(i).toFixed(1),py(v,Math.min(sm0,0),Math.max(sm1,15),H1).toFixed(1),"#ce93d8",2):"").join(""):""}
+    ${hasSma50&&lastSmY?tag("SMA50","#ce93d8",W-PR+2,lastSmY.toFixed(1)):""}
     ${tag("ATR","#29b6f6",W-PR+2,lAY.toFixed(1))}
     ${tag("V1W","#ffb74d",W-PR+2,(lVY+9).toFixed(1))}
     ${xlbls(H1)}`);
@@ -655,7 +705,7 @@ function buildCharts(ticker){
 
   return`
     ${sec("SCORE-VERLAUF",svg0)}
-    ${sec("VOLATILITÄT — ATR% · VOLA 1W%",svg1,ll("#29b6f6","ATR %")+ll("#ffb74d","Vola 1W %")+"<span style='color:#37474f;font-size:9px'>Schatten = Kontraktion</span>")}
+    ${sec("VOLATILITÄT — ATR% · VOLA 1W% · SMA50%",svg1,ll("#29b6f6","ATR %")+ll("#ffb74d","Vola 1W %")+(hasSma50?ll("#ce93d8","SMA50 Abstand %"):"")+"<span style='color:#37474f;font-size:9px'>Schatten=Kontraktion</span>")}
     ${sec("RSI (14)",svg2,ld("#00e87a","45–65 ✓")+ld("#ffd54f","65–80")+ld("#ef5350","außerhalb"))}
     ${sec("REL. VOLUMEN · RATIO",svg3,ld("#00e87a","RV&lt;0.7")+ld("#ffd54f","0.7–1.2")+ld("#ef5350","&gt;1.2")+ll("#29b6f6","Ratio"))}`;
 }
