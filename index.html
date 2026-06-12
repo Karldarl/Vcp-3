@@ -142,7 +142,7 @@ textarea{background:var(--bg2);border:1px solid var(--border2);color:var(--white
     <button class="tab-btn active" onclick="switchTab(0)">🔥 TOP 10</button>
     <button class="tab-btn" onclick="switchTab(1)">Δ CHART</button>
     <button class="tab-btn" onclick="switchTab(2)">↑ UPLOAD</button>
-    <button class="tab-btn" onclick="switchTab(3)">⚙</button>
+    <button class="tab-btn" onclick="switchTab(3)">👁 Watch</button><button class="tab-btn" onclick="switchTab(4)">⚙</button>
   </div>
 </div>
 
@@ -201,6 +201,7 @@ textarea{background:var(--bg2);border:1px solid var(--border2);color:var(--white
   </div>
 </div>
 <div id="tab3" style="display:none"></div>
+<div id="tab4" style="display:none"></div>
 
 <script>
 // ════════════════════════════════════════════════════════════════
@@ -789,7 +790,7 @@ function switchUni(u){
 function switchTab(i){
   curTab=i;expandedTicker=null;
   document.querySelectorAll(".tab-btn").forEach((b,j)=>b.classList.toggle("active",i===j));
-  [0,1,2,3].forEach(j=>document.getElementById("tab"+j).style.display=i===j?"block":"none");
+  [0,1,2,3,4].forEach(j=>document.getElementById("tab"+j).style.display=i===j?"block":"none");
   const bar=document.getElementById("scan-bar");
   bar.style.display=(i===0||i===1)&&U().scans.length?"flex":"none";
   render();
@@ -887,7 +888,8 @@ function render(){
   if(curTab===0)renderTop10();
   if(curTab===1)renderCompare();
   if(curTab===2)renderUpload();
-  if(curTab===3)renderManage();
+  if(curTab===3)renderWatch();
+  if(curTab===4)renderManage();
 }
 
 // ── TOP 10 ──
@@ -1089,6 +1091,90 @@ function renderCompare(){
     return`<tr style="border-bottom:1px solid #0e0e0e"><td style="padding:8px 10px;color:#fff;font-weight:700;font-size:13px;letter-spacing:.5px">${t}</td>${cells}</tr>`;
   }).join("");
   el.innerHTML=`<div class="compare-wrap"><div class="compare-ttl">SCORE-VERGLEICH · ${uni.toUpperCase()} · TOP 30</div><table><thead><tr><th style="min-width:75px">TICKER</th>${headers}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// ── WATCHLIST ──
+function calcMarkers(ticker){
+  const st=U();
+  const allHist=st.scans.map(sc=>{
+    const s=sc.stocks.find(x=>x.t===ticker);
+    if(!s)return null;
+    return{date:sc.date,atr:s.atr,rv:s.rv,
+           ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null),
+           price:s.price,sma50:s.sma50,high52w:s.high52w};
+  }).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date));
+  const byDate={};allHist.forEach(h=>{byDate[h.date]=h;});
+  const hist=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+  if(hist.length<2)return null;
+  const last=hist[hist.length-1];
+  const last3=hist.slice(-3);
+  const markers=[];const details={};
+  // ATR↓
+  const atrs=last3.map(h=>h.atr).filter(Boolean);
+  if(atrs.length>=2&&last.atr&&last.atr<3.5&&atrs[atrs.length-1]<atrs[0]){
+    markers.push("ATR↓");details["ATR↓"]=`${atrs[0].toFixed(1)}→${atrs[atrs.length-1].toFixed(1)}%`;
+  }
+  // RV↓
+  const rvs=last3.map(h=>h.rv).filter(Boolean);
+  if(rvs.length>=2&&last.rv&&last.rv<1.0&&rvs[rvs.length-1]<rvs[0]){
+    markers.push("RV↓");details["RV↓"]=`${rvs[0].toFixed(2)}→${rvs[rvs.length-1].toFixed(2)}`;
+  }
+  // SMA✓
+  const smaPct=last.price&&last.sma50&&last.sma50>0?((last.price-last.sma50)/last.sma50*100):null;
+  if(smaPct!=null&&smaPct>=2&&smaPct<=12){
+    markers.push("SMA✓");details["SMA✓"]=`+${smaPct.toFixed(1)}%`;
+  }
+  // 52W✓
+  const h52=last.price&&last.high52w&&last.high52w>0?((last.price-last.high52w)/last.high52w*100):null;
+  if(h52!=null&&h52>=-10&&h52<=0){
+    markers.push("52W✓");details["52W✓"]=`${h52.toFixed(1)}%`;
+  }
+  // RAT↓
+  const rats=last3.map(h=>h.ratio).filter(Boolean);
+  if(rats.length>=2&&last.ratio&&last.ratio<1.2&&rats[rats.length-1]<rats[0]){
+    markers.push("RAT↓");details["RAT↓"]=`${rats[0].toFixed(2)}→${rats[rats.length-1].toFixed(2)}`;
+  }
+  return{ticker,markers,details,count:markers.length};
+}
+
+function renderWatch(){
+  const el=document.getElementById("tab3");
+  const st=U();
+  if(!st.scans.length){
+    el.innerHTML=`<div style="padding:16px;color:#546e7a;font-size:11px">Noch keine Scans.</div>`;
+    return;
+  }
+  const allTickers=[...new Set(st.scans.flatMap(sc=>sc.stocks.map(s=>s.t)))];
+  const results=allTickers.map(t=>calcMarkers(t)).filter(r=>r&&r.count>=2);
+  results.sort((a,b)=>b.count-a.count||a.ticker.localeCompare(b.ticker));
+  const acol=uni==="hard"?"#ffd54f":"#00e87a";
+  const mcols={"ATR↓":"#29b6f6","RV↓":"#00e87a","SMA✓":"#ce93d8","52W✓":"#ffd54f","RAT↓":"#ffb74d"};
+
+  const rows=results.map(r=>{
+    const chips=r.markers.map(m=>{
+      const col=mcols[m]||"#546e7a";
+      return`<span style="padding:2px 6px;border-radius:3px;background:${col}18;border:1px solid ${col}44;color:${col};font-size:8px;font-weight:700">${m} <span style="opacity:.6;font-size:7px">${r.details[m]||""}</span></span>`;
+    }).join(" ");
+    const stars="⭐".repeat(r.count);
+    return`<div style="padding:9px 0;border-bottom:1px solid #1e2836;display:flex;align-items:center;gap:8px">
+      <div style="font-weight:700;font-size:13px;color:#29b6f6;min-width:55px">${r.ticker}</div>
+      <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${chips}</div>
+      <div style="font-size:10px">${stars}</div>
+    </div>`;
+  }).join("");
+
+  el.innerHTML=`<div style="padding:12px">
+    <div style="color:${acol};font-size:11px;font-weight:700;letter-spacing:2px;margin-bottom:3px">👁 BEOBACHTUNGSLISTE — ${uni.toUpperCase()}</div>
+    <div style="color:#37474f;font-size:9px;margin-bottom:10px">≥2 aktive Marker · letzte 3 Scans</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;padding:7px 9px;background:#0d1219;border:1px solid #1e2836;border-radius:5px">
+      ${Object.entries(mcols).map(([m,col])=>`<span style="color:${col};font-size:8px">● ${m}</span>`).join("  ")}
+    </div>
+    ${rows||`<div style="color:#546e7a;font-size:11px;text-align:center;padding:30px">Keine Kandidaten.</div>`}
+    <div style="margin-top:10px;color:#2a3a4a;font-size:8px;line-height:1.9">
+      ATR↓ Range schrumpft &lt;3.5% · RV↓ Volumen trocknet aus · SMA✓ Ideal 2–12% über MA<br>
+      52W✓ ≤10% unter Jahreshoch · RAT↓ Vola-Ratio kontrahiert
+    </div>
+  </div>`;
 }
 
 // ── MANAGE ──
