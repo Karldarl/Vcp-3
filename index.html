@@ -271,7 +271,7 @@ function applyManual(){
 function sortScansChronologically(){
   U().scans.sort((a,b)=>a.date.localeCompare(b.date));
   // Auto-Cleanup: max 30 Scans behalten (älteste fliegen raus, Seeds bleiben)
-  const MAX=30;
+  const MAX=60;
   if(U().scans.length>MAX){
     const seeds=U().scans.filter(s=>U().seedIds.has(s.id));
     const nonSeeds=U().scans.filter(s=>!U().seedIds.has(s.id));
@@ -383,13 +383,20 @@ function parseCSV(text){
   return lines.slice(1).map(line=>{
     const cols=splitLine(line);
     const row={};hdrs.forEach((h,i)=>{row[h]=(cols[i]||"").replace(/^"|"$/g,"").trim();});
+    const norm=s=>s.toLowerCase().replace(/ä/g,"a").replace(/ö/g,"o").replace(/ü/g,"u").replace(/ß/g,"ss");
     const n=(...keys)=>{
-      // Erst exakter Match
+      // Exakter Match
       for(const k of keys){if(row[k]!==undefined){const v=parseFloat(row[k]);if(!isNaN(v))return v;}}
-      // Dann lowercase exakter Match
-      for(const k of keys){const fk=Object.keys(row).find(rk=>rk.toLowerCase()===k);if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}}
-      // Dann partial Match (letzter Ausweg)
-      for(const k of keys){const fk=Object.keys(row).find(rk=>rk.toLowerCase().includes(k)&&!rk.toLowerCase().includes("währung"));if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}}
+      // Normalisierter Match (Umlaute)
+      for(const k of keys){
+        const fk=Object.keys(row).find(rk=>norm(rk)===norm(k));
+        if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}
+      }
+      // Partial Match
+      for(const k of keys){
+        const fk=Object.keys(row).find(rk=>norm(rk).includes(norm(k))&&!norm(rk).includes("wahrung")&&!norm(rk).includes("currency"));
+        if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}
+      }
       return null;
     };
     const atr=n("atr","average true range % (14) 1 tag","average true range");
@@ -765,7 +772,7 @@ function U(){return state[uni];}
 // ════════════════════════════════════════════════════════════════
 function cleanupScans(u){
   const st=state[u];
-  const MAX=30;
+  const MAX=60;
   if(st.scans.length>MAX){
     const seeds=st.scans.filter(s=>st.seedIds.has(s.id));
     const nonSeeds=st.scans.filter(s=>!st.seedIds.has(s.id));
