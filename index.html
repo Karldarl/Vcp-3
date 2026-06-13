@@ -270,6 +270,15 @@ function applyManual(){
 }
 function sortScansChronologically(){
   U().scans.sort((a,b)=>a.date.localeCompare(b.date));
+  // Auto-Cleanup: max 30 Scans behalten (älteste fliegen raus, Seeds bleiben)
+  const MAX=30;
+  if(U().scans.length>MAX){
+    const seeds=U().scans.filter(s=>U().seedIds.has(s.id));
+    const nonSeeds=U().scans.filter(s=>!U().seedIds.has(s.id));
+    // Älteste NonSeeds entfernen bis max erreicht
+    const keep=nonSeeds.slice(-(MAX-seeds.length));
+    U().scans=[...seeds,...keep].sort((a,b)=>a.date.localeCompare(b.date));
+  }
   U().sel=U().scans.length-1;
 }
 function doAdd(){
@@ -754,6 +763,19 @@ function U(){return state[uni];}
 // ════════════════════════════════════════════════════════════════
 // STORAGE
 // ════════════════════════════════════════════════════════════════
+function cleanupScans(u){
+  const st=state[u];
+  const MAX=30;
+  if(st.scans.length>MAX){
+    const seeds=st.scans.filter(s=>st.seedIds.has(s.id));
+    const nonSeeds=st.scans.filter(s=>!st.seedIds.has(s.id));
+    const keep=nonSeeds.slice(-(MAX-seeds.length));
+    st.scans=[...seeds,...keep].sort((a,b)=>a.date.localeCompare(b.date));
+    localStorage.setItem(st.key,JSON.stringify(st.scans));
+    console.log(`${u}: Cleanup ${nonSeeds.length-keep.length} alte Scans entfernt`);
+  }
+}
+
 function loadAll(){
   ["soft","hard"].forEach(u=>{
     const st=state[u];
@@ -766,6 +788,8 @@ function loadAll(){
       }else{st.scans=[...st.seeds];localStorage.setItem(st.key,JSON.stringify(st.scans));}
     }catch(e){st.scans=[...st.seeds];}
   });
+  cleanupScans("soft");
+  cleanupScans("hard");
   setDot(true);
 }
 function saveU(){try{localStorage.setItem(U().key,JSON.stringify(U().scans));setDot(true);}catch(e){setDot(false);}}
@@ -1179,7 +1203,7 @@ function renderWatch(){
 
 // ── MANAGE ──
 function renderManage(){
-  const el=document.getElementById("tab3");
+  const el=document.getElementById("tab4");
   const st=U();
   // storage indicator
   const dotHtml=`<div style="display:flex;align-items:center;gap:6px;margin-bottom:14px">
@@ -1231,7 +1255,7 @@ function delScan(id){U().scans=U().scans.filter(s=>s.id!==id);saveU();U().sel=Ma
   document.getElementById("pwa-manifest").href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:"application/json"}));
 })();
 if("serviceWorker" in navigator){
-  const sw=`const C="vcp-v4";self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(["./"])));self.skipWaiting();});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match("./"))));});`;
+  const sw=`const C="vcp-v5";self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(["./"])));self.skipWaiting();});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match("./"))));});`;
   navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:"application/javascript"})),{scope:"./"}).catch(()=>{});
 }
 let deferredPrompt=null;
