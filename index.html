@@ -384,18 +384,14 @@ function parseCSV(text){
     const cols=splitLine(line);
     const row={};hdrs.forEach((h,i)=>{row[h]=(cols[i]||"").replace(/^"|"$/g,"").trim();});
     const norm=s=>s.toLowerCase().replace(/ä/g,"a").replace(/ö/g,"o").replace(/ü/g,"u").replace(/ß/g,"ss");
+    const rowNorm={};Object.keys(row).forEach(k=>{rowNorm[norm(k)]=row[k];});
     const n=(...keys)=>{
-      // Exakter Match
-      for(const k of keys){if(row[k]!==undefined){const v=parseFloat(row[k]);if(!isNaN(v))return v;}}
-      // Normalisierter Match (Umlaute)
       for(const k of keys){
-        const fk=Object.keys(row).find(rk=>norm(rk)===norm(k));
-        if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}
-      }
-      // Partial Match
-      for(const k of keys){
-        const fk=Object.keys(row).find(rk=>norm(rk).includes(norm(k))&&!norm(rk).includes("wahrung")&&!norm(rk).includes("currency"));
-        if(fk){const v=parseFloat(row[fk]);if(!isNaN(v))return v;}
+        // 1. Exakter Match
+        if(row[k]!==undefined&&row[k]!==''){const v=parseFloat(row[k]);if(!isNaN(v))return v;}
+        // 2. Normalisierter Match
+        const nk=norm(k);
+        if(rowNorm[nk]!==undefined&&rowNorm[nk]!==''){const v=parseFloat(rowNorm[nk]);if(!isNaN(v))return v;}
       }
       return null;
     };
@@ -1262,7 +1258,7 @@ function delScan(id){U().scans=U().scans.filter(s=>s.id!==id);saveU();U().sel=Ma
   document.getElementById("pwa-manifest").href=URL.createObjectURL(new Blob([JSON.stringify(mf)],{type:"application/json"}));
 })();
 if("serviceWorker" in navigator){
-  const sw=`const C="vcp-v5";self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(["./"])));self.skipWaiting();});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener("fetch",e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>caches.match("./"))));});`;
+  const sw=`const C="vcp-v6";self.addEventListener("install",e=>{e.waitUntil(caches.open(C).then(c=>c.addAll(["./"])));self.skipWaiting();});self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==C).map(k=>caches.delete(k)))));self.clients.claim();});self.addEventListener("fetch",e=>{e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});`;
   navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:"application/javascript"})),{scope:"./"}).catch(()=>{});
 }
 let deferredPrompt=null;
