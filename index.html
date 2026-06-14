@@ -399,17 +399,17 @@ function parseCSV(text){
       }
       return null;
     };
-    const atr=n("atr","average true range % (14) 1 tag","average true range");
-    const v1w=n("vola1w","v1w","volatilität 1 woche","volatilitat 1 woche","vola 1w");
-    const v1m=n("vola1m","v1m","volatilität 1 monat","volatilitat 1 monat","vola 1m");
-    const rv=n("relvol","rv","relatives volumen 1 tag","relatives volumen","rel vol");
-    const rsi=n("rsi","relative strength index (14) 1 tag","relative strength index");
+    const atr=n("Average True Range %, 14, 1 Tag","average true range %, 14, 1 tag","average true range % (14) 1 tag","average true range");
+    const v1w=n("Volatilität, 1 Woche","volatilitat, 1 woche","volatilität 1 woche","volatilitat 1 woche","vola1w","vola 1w");
+    const v1m=n("Volatilität, 1 Monat","volatilitat, 1 monat","volatilität 1 monat","volatilitat 1 monat","vola1m","vola 1m");
+    const rv=n("Relatives Volumen, 1 Tag","relatives volumen, 1 tag","relatives volumen 1 tag","relatives volumen","relvol","rel vol");
+    const rsi=n("Relative Strength Index, 14, 1 Tag","relative strength index, 14, 1 tag","relative strength index (14) 1 tag","relative strength index");
     const rat=n("ratio")??(v1m&&v1w?v1m/v1w:null);
     const t=(row.ticker||row.symbol||"").toUpperCase();
     const sec=row.sector||row.sektor||row.branche||row["sektor"]||"";
     const price=n("Preis","preis","letzter","last","price","close","schlusskurs");
-    const sma50=n("Einfacher gleitender Durchschnitt (50) 1 Tag","einfacher gleitender durchschnitt (50) 1 tag","sma(50)","sma50","sma 50");
-    const high52w=n("Hoch 52 Wochen","hoch 52 wochen","52-wochen-hoch","52w-hoch","52-week high");
+    const sma50=n("Einfacher gleitender Durchschnitt, 50, 1 Tag","einfacher gleitender durchschnitt, 50, 1 tag","einfacher gleitender durchschnitt (50) 1 tag","sma(50)","sma50","sma 50");
+    const high52w=n("Hoch, 52 Wochen","hoch, 52 wochen","hoch 52 wochen","52-wochen-hoch","52w-hoch","52-week high");
     if(!t)return null;
     return{t,atr,v1w,v1m,ratio:rat,rv,rsi,sec,price,sma50,high52w};
   }).filter(Boolean);
