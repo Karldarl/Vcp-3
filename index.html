@@ -1133,35 +1133,69 @@ function calcMarkers(ticker){
   const byDate={};allHist.forEach(h=>{byDate[h.date]=h;});
   const hist=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
   if(hist.length<2)return null;
-  const last=hist[hist.length-1];
-  const last3=hist.slice(-3);
-  const markers=[];const details={};
-  // ATR↓
-  const atrs=last3.map(h=>h.atr).filter(Boolean);
-  if(atrs.length>=2&&last.atr&&last.atr<3.5&&atrs[atrs.length-1]<atrs[0]){
-    markers.push("ATR↓");details["ATR↓"]=`${atrs[0].toFixed(1)}→${atrs[atrs.length-1].toFixed(1)}%`;
+
+  function getMarkersForWindow(window){
+    if(window.length<2)return{markers:[],details:{}};
+    const last=window[window.length-1];
+    const markers=[];const details={};
+    const atrs=window.map(h=>h.atr).filter(Boolean);
+    if(atrs.length>=2&&last.atr&&last.atr<3.5&&atrs[atrs.length-1]<atrs[0])
+      {markers.push("ATR↓");details["ATR↓"]=`${atrs[0].toFixed(1)}→${atrs[atrs.length-1].toFixed(1)}%`;}
+    const rvs=window.map(h=>h.rv).filter(Boolean);
+    if(rvs.length>=2&&last.rv&&last.rv<1.0&&rvs[rvs.length-1]<rvs[0])
+      {markers.push("RV↓");details["RV↓"]=`${rvs[0].toFixed(2)}→${rvs[rvs.length-1].toFixed(2)}`;}
+    const smaPct=last.price&&last.sma50&&last.sma50>0?((last.price-last.sma50)/last.sma50*100):null;
+    if(smaPct!=null&&smaPct>=2&&smaPct<=12)
+      {markers.push("SMA✓");details["SMA✓"]=`+${smaPct.toFixed(1)}%`;}
+    const h52=last.price&&last.high52w&&last.high52w>0?((last.price-last.high52w)/last.high52w*100):null;
+    if(h52!=null&&h52>=-10&&h52<=0)
+      {markers.push("52W✓");details["52W✓"]=`${h52.toFixed(1)}%`;}
+    const rats=window.map(h=>h.ratio).filter(Boolean);
+    if(rats.length>=2&&last.ratio&&last.ratio<1.2&&rats[rats.length-1]<rats[0])
+      {markers.push("RAT↓");details["RAT↓"]=`${rats[0].toFixed(2)}→${rats[rats.length-1].toFixed(2)}`;}
+    return{markers,details};
   }
-  // RV↓
-  const rvs=last3.map(h=>h.rv).filter(Boolean);
-  if(rvs.length>=2&&last.rv&&last.rv<1.0&&rvs[rvs.length-1]<rvs[0]){
-    markers.push("RV↓");details["RV↓"]=`${rvs[0].toFixed(2)}→${rvs[rvs.length-1].toFixed(2)}`;
+
+  // 5-Tage-Verlauf: für jeden der letzten 5 Tage Marker berechnen
+  const N=hist.length;
+  const days=Math.min(5,N);
+  const dailyCounts=[];
+  for(let i=0;i<days;i++){
+    const dayIdx=N-days+i;
+    // Fenster: 3 Tage endend an diesem Tag
+    const window=hist.slice(Math.max(0,dayIdx-2),dayIdx+1);
+    const r=getMarkersForWindow(window);
+    dailyCounts.push({date:hist[dayIdx].date,count:r.markers.length});
   }
-  // SMA✓
-  const smaPct=last.price&&last.sma50&&last.sma50>0?((last.price-last.sma50)/last.sma50*100):null;
-  if(smaPct!=null&&smaPct>=2&&smaPct<=12){
-    markers.push("SMA✓");details["SMA✓"]=`+${smaPct.toFixed(1)}%`;
+
+  // Heute
+  const today=getMarkersForWindow(hist.slice(-3));
+  // Gestern
+  const prev=N>=4?getMarkersForWindow(hist.slice(-4,-1)):null;
+  const delta=prev?today.markers.length-prev.markers.length:null;
+
+  // Trend über 5 Tage: steigend/fallend/stabil
+  const counts=dailyCounts.map(d=>d.count);
+  let trend="→";
+  if(counts.length>=3){
+    const first=counts.slice(0,Math.ceil(counts.length/2));
+    const last2=counts.slice(-Math.ceil(counts.length/2));
+    const avgFirst=first.reduce((a,b)=>a+b,0)/first.length;
+    const avgLast=last2.reduce((a,b)=>a+b,0)/last2.length;
+    if(avgLast>avgFirst+0.4) trend="▲";
+    else if(avgLast<avgFirst-0.4) trend="▼";
   }
-  // 52W✓
-  const h52=last.price&&last.high52w&&last.high52w>0?((last.price-last.high52w)/last.high52w*100):null;
-  if(h52!=null&&h52>=-10&&h52<=0){
-    markers.push("52W✓");details["52W✓"]=`${h52.toFixed(1)}%`;
-  }
-  // RAT↓
-  const rats=last3.map(h=>h.ratio).filter(Boolean);
-  if(rats.length>=2&&last.ratio&&last.ratio<1.2&&rats[rats.length-1]<rats[0]){
-    markers.push("RAT↓");details["RAT↓"]=`${rats[0].toFixed(2)}→${rats[rats.length-1].toFixed(2)}`;
-  }
-  return{ticker,markers,details,count:markers.length};
+
+  return{
+    ticker,
+    markers:today.markers,
+    details:today.details,
+    count:today.markers.length,
+    prevCount:prev?prev.markers.length:null,
+    delta,
+    dailyCounts,
+    trend
+  };
 }
 
 function renderWatch(){
@@ -1182,11 +1216,34 @@ function renderWatch(){
       const col=mcols[m]||"#546e7a";
       return`<span style="padding:2px 6px;border-radius:3px;background:${col}18;border:1px solid ${col}44;color:${col};font-size:8px;font-weight:700">${m} <span style="opacity:.6;font-size:7px">${r.details[m]||""}</span></span>`;
     }).join(" ");
-    const stars="⭐".repeat(r.count);
-    return`<div style="padding:9px 0;border-bottom:1px solid #1e2836;display:flex;align-items:center;gap:8px">
-      <div style="font-weight:700;font-size:13px;color:#29b6f6;min-width:55px">${r.ticker}</div>
-      <div style="display:flex;gap:3px;flex-wrap:wrap;flex:1">${chips}</div>
-      <div style="font-size:10px">${stars}</div>
+
+    // 5-Tage Sparkline als kleine Balken
+    const maxC=5;
+    const sparkline=r.dailyCounts.map(d=>{
+      const h=Math.max(1,Math.round((d.count/maxC)*16));
+      const col=d.count>=4?"#00e87a":d.count>=2?"#ffd54f":"#37474f";
+      return`<div style="width:8px;height:${h}px;background:${col};border-radius:1px;align-self:flex-end" title="${d.date}: ${d.count} Marker"></div>`;
+    }).join("");
+
+    // Trend-Pfeil
+    const trendCol=r.trend==="▲"?"#00e87a":r.trend==="▼"?"#ef5350":"#37474f";
+    const deltaStr=r.delta!==null?(r.delta>0?`+${r.delta}`:r.delta<0?`${r.delta}`:"="):"";
+    const deltaCol=r.delta>0?"#00e87a":r.delta<0?"#ef5350":"#37474f";
+
+    return`<div style="padding:10px 0;border-bottom:1px solid #1e2836">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">
+        <div style="font-weight:700;font-size:13px;color:#29b6f6;min-width:55px">${r.ticker}</div>
+        <div style="font-size:10px">${"⭐".repeat(r.count)}</div>
+        <div style="margin-left:auto;display:flex;align-items:center;gap:6px">
+          ${r.delta!==null?`<span style="color:${deltaCol};font-size:10px;font-weight:700">${deltaStr}</span>`:""}
+          <span style="color:${trendCol};font-size:13px;font-weight:700">${r.trend}</span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:3px;margin-bottom:5px;height:18px">
+        ${sparkline}
+        <span style="color:#37474f;font-size:7px;margin-left:2px;align-self:center">5T</span>
+      </div>
+      <div style="display:flex;gap:3px;flex-wrap:wrap">${chips}</div>
     </div>`;
   }).join("");
 
