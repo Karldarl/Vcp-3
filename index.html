@@ -982,7 +982,7 @@ function renderTop10(){
       <td style="width:10px;color:#37474f;font-size:8px;padding:7px 3px;vertical-align:middle">${i+1}</td>
       <td style="padding:7px 5px;vertical-align:middle">
         <div style="display:flex;align-items:center;gap:4px">
-          <a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(s.t)}" target="_blank" rel="noopener"
+          <a href="https://www.tradingview.com/symbols/${encodeURIComponent(s.t)}/" target="_blank" rel="noopener"
              onclick="event.stopPropagation()"
              style="font-weight:700;font-size:12px;color:var(--blue);letter-spacing:.2px;white-space:nowrap;text-decoration:none;border-bottom:1px dotted rgba(41,182,246,.4)">${s.t}</a>${fireIcon?` <span>${fireIcon}</span>`:""}
         </div>
@@ -1070,6 +1070,73 @@ function renderPositionBar(s){
   return`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${items.join("")}</div>`;
 }
 
+function buildStarHistory(ticker){
+  const st=U();
+  const allHist=st.scans.map(sc=>{
+    const s=sc.stocks.find(x=>x.t===ticker);
+    return{date:sc.date,inTop10:sc.stocks.indexOf(s)>=0&&sc.stocks.indexOf(s)<10,
+           s:s?{atr:s.atr,rv:s.rv,ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null),
+                price:s.price,sma50:s.sma50,high52w:s.high52w}:null};
+  }).sort((a,b)=>a.date.localeCompare(b.date));
+  const byDate={};allHist.forEach(h=>{byDate[h.date]=h;});
+  const allDays=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+  if(allDays.length<2)return"";
+
+  function getMarkersForWindow(window){
+    if(window.length<2||!window[window.length-1].s)return null;
+    const last=window[window.length-1].s;
+    const validWin=window.filter(w=>w.s).map(w=>w.s);
+    let count=0;
+    const atrs=validWin.map(h=>h.atr).filter(Boolean);
+    if(atrs.length>=2&&last.atr&&last.atr<3.5&&atrs[atrs.length-1]<atrs[0])count++;
+    const rvs=validWin.map(h=>h.rv).filter(Boolean);
+    if(rvs.length>=2&&last.rv&&last.rv<1.0&&rvs[rvs.length-1]<rvs[0])count++;
+    const smaPct=last.price&&last.sma50&&last.sma50>0?((last.price-last.sma50)/last.sma50*100):null;
+    if(smaPct!=null&&smaPct>=2&&smaPct<=12)count++;
+    const h52=last.price&&last.high52w&&last.high52w>0?((last.price-last.high52w)/last.high52w*100):null;
+    if(h52!=null&&h52>=-10&&h52<=0)count++;
+    const rats=validWin.map(h=>h.ratio).filter(Boolean);
+    if(rats.length>=2&&last.ratio&&last.ratio<1.2&&rats[rats.length-1]<rats[0])count++;
+    return count;
+  }
+
+  const MAXDAYS=20;
+  const showDays=allDays.slice(-MAXDAYS);
+  const cells=showDays.map((d,idx)=>{
+    const absIdx=allDays.length-showDays.length+idx;
+    if(!d.s){
+      // Ticker war an diesem Tag gar nicht im Scan / nicht Top10
+      return{date:d.date,stars:null};
+    }
+    const window=allDays.slice(Math.max(0,absIdx-2),absIdx+1);
+    const count=getMarkersForWindow(window);
+    return{date:d.date,stars:count};
+  });
+
+  const dayStr=d=>{const p=d.split("-");return`${p[2]}.${p[1]}`;};
+
+  const items=cells.map(c=>{
+    const label=dayStr(c.date);
+    if(c.stars===null){
+      return`<div style="flex-shrink:0;text-align:center;min-width:46px">
+        <div style="color:#2a3a4a;font-size:13px;height:16px;line-height:16px">—</div>
+        <div style="color:#2a3a4a;font-size:7px;margin-top:2px">${label}</div>
+      </div>`;
+    }
+    const starStr="⭐".repeat(c.stars)+"☆".repeat(5-c.stars);
+    const col=c.stars>=4?"#ffd54f":c.stars>=2?"#90a4ae":"#3a4a5a";
+    return`<div style="flex-shrink:0;text-align:center;min-width:46px">
+      <div style="color:${col};font-size:9px;letter-spacing:.5px;height:16px;line-height:16px">${starStr}</div>
+      <div style="color:#37474f;font-size:7px;margin-top:2px">${label}</div>
+    </div>`;
+  }).join("");
+
+  return`<div style="margin-bottom:8px">
+    <div style="color:#37474f;font-size:8px;letter-spacing:1px;margin-bottom:4px">⭐ VERLAUF · ${showDays.length} TAGE</div>
+    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">${items}</div>
+  </div>`;
+}
+
 function buildDetail(s,sc){
   const hist=getHistory(s.t);
   const r=ratio(s);
@@ -1089,11 +1156,12 @@ function buildDetail(s,sc){
   </div>`;
   return`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <span style="font-size:12px;font-weight:700"><a href="https://www.tradingview.com/chart/?symbol=${encodeURIComponent(s.t)}" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none;border-bottom:1px dotted rgba(41,182,246,.4)">${s.t}</a> <span style="color:#37474f;font-size:8px;font-weight:400">${s.sec||""}</span></span>
+      <span style="font-size:12px;font-weight:700"><a href="https://www.tradingview.com/symbols/${encodeURIComponent(s.t)}/" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none;border-bottom:1px dotted rgba(41,182,246,.4)">${s.t}</a> <span style="color:#37474f;font-size:8px;font-weight:400">${s.sec||""}</span></span>
       <span style="color:#37474f;font-size:8px">${hist.length} Scan${hist.length!==1?"s":""}</span>
     </div>
     ${renderBadges(s.t,false)}
     ${renderPositionBar(s)}
+    ${buildStarHistory(s.t)}
     ${stats}
     ${buildCharts(s.t)}`;
 }
