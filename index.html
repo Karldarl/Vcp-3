@@ -1073,8 +1073,9 @@ function renderPositionBar(s){
 function buildStarHistory(ticker){
   const st=U();
   const allHist=st.scans.map(sc=>{
-    const s=sc.stocks.find(x=>x.t===ticker);
-    return{date:sc.date,inTop10:sc.stocks.indexOf(s)>=0&&sc.stocks.indexOf(s)<10,
+    const idx=sc.stocks.findIndex(x=>x.t===ticker);
+    const s=idx>=0?sc.stocks[idx]:null;
+    return{date:sc.date,inTop10:idx>=0&&idx<10,
            s:s?{atr:s.atr,rv:s.rv,ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null),
                 price:s.price,sma50:s.sma50,high52w:s.high52w}:null};
   }).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1102,41 +1103,75 @@ function buildStarHistory(ticker){
 
   const MAXDAYS=20;
   const showDays=allDays.slice(-MAXDAYS);
-  const cells=showDays.map((d,idx)=>{
-    const absIdx=allDays.length-showDays.length+idx;
-    if(!d.s){
-      // Ticker war an diesem Tag gar nicht im Scan / nicht Top10
-      return{date:d.date,stars:null};
-    }
+  const N=showDays.length;
+  if(N<2)return"";
+
+  const counts=showDays.map((d,idx)=>{
+    const absIdx=allDays.length-N+idx;
+    if(!d.s)return null; // nicht erfasst / nicht Top10
     const window=allDays.slice(Math.max(0,absIdx-2),absIdx+1);
-    const count=getMarkersForWindow(window);
-    return{date:d.date,stars:count};
+    return getMarkersForWindow(window);
   });
 
-  const dayStr=d=>{const p=d.split("-");return`${p[2]}.${p[1]}`;};
+  // ── Chart-Setup, gleicher Stil wie buildCharts ──
+  const PL=22,PR=8,PT=8,PB=16;
+  const spacing=Math.min(20,Math.max(14,(260-PL-PR)/(N-1||1)));
+  const W=PL+spacing*(N-1)+PR+18;
+  const H=62;
 
-  const items=cells.map(c=>{
-    const label=dayStr(c.date);
-    if(c.stars===null){
-      return`<div style="flex-shrink:0;text-align:center;min-width:46px">
-        <div style="color:#2a3a4a;font-size:13px;height:16px;line-height:16px">—</div>
-        <div style="color:#2a3a4a;font-size:7px;margin-top:2px">${label}</div>
-      </div>`;
+  function px(i){return PL+i*spacing;}
+  function py(v){const ih=H-PT-PB;return PT+ih*(1-(v/5));} // Skala fix 0-5
+  function gh(y){return`<line x1="${PL}" y1="${y}" x2="${W-PR}" y2="${y}" stroke="rgba(255,255,255,.04)" stroke-width="1"/>`;}
+  function yl(txt,y){return`<text x="${PL-3}" y="${y}" font-size="6.5" fill="#546e7a" text-anchor="end" dominant-baseline="middle" font-family="inherit">${txt}</text>`;}
+  function xl(txt,x,y){return`<text x="${x}" y="${y}" font-size="6.5" fill="#37474f" text-anchor="middle" font-family="inherit">${txt}</text>`;}
+  function dayStr(d){const p=d.split("-");return`${p[2]}.${p[1]}`;}
+
+  // Gitterlinien bei 0,1,2,3,4,5
+  const grid=[0,1,2,3,4,5].map(v=>gh(py(v).toFixed(1))).join("");
+  const yLabels=[0,2,4,5].map(v=>yl(v,py(v).toFixed(1))).join("");
+
+  // Verbindungslinie nur zwischen vorhandenen (nicht-null) Punkten, segmentweise
+  let segments=[];let cur=[];
+  counts.forEach((c,i)=>{
+    if(c===null){
+      if(cur.length>1)segments.push(cur);
+      cur=[];
+    } else {
+      cur.push(`${px(i).toFixed(1)},${py(c).toFixed(1)}`);
     }
-    const starStr="⭐".repeat(c.stars)+"☆".repeat(5-c.stars);
-    const col=c.stars>=4?"#ffd54f":c.stars>=2?"#90a4ae":"#3a4a5a";
-    return`<div style="flex-shrink:0;text-align:center;min-width:46px">
-      <div style="color:${col};font-size:9px;letter-spacing:.5px;height:16px;line-height:16px">${starStr}</div>
-      <div style="color:#37474f;font-size:7px;margin-top:2px">${label}</div>
-    </div>`;
+  });
+  if(cur.length>1)segments.push(cur);
+  const lines=segments.map(seg=>`<polyline points="${seg.join(" ")}" fill="none" stroke="#ffd54f" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+
+  // Punkte + "—" für fehlende Tage
+  const dots=counts.map((c,i)=>{
+    if(c===null){
+      return`<text x="${px(i).toFixed(1)}" y="${py(2.5).toFixed(1)}" font-size="8" fill="#2a3a4a" text-anchor="middle" dominant-baseline="middle">–</text>`;
+    }
+    const col=c>=4?"#00e87a":c>=2?"#ffd54f":"#546e7a";
+    return`<circle cx="${px(i).toFixed(1)}" cy="${py(c).toFixed(1)}" r="2.4" fill="${col}" stroke="rgba(0,0,0,.5)" stroke-width=".6"/>`;
   }).join("");
 
-  return`<div style="margin-bottom:8px">
-    <div style="color:#37474f;font-size:8px;letter-spacing:1px;margin-bottom:4px">⭐ VERLAUF · ${showDays.length} TAGE</div>
-    <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch">${items}</div>
+  const xLabels=showDays.map((d,i)=>xl(dayStr(d.date),px(i).toFixed(1),(H-PB+12))).join("");
+
+  const lastVal=counts[counts.length-1];
+  const lastTag=lastVal!==null?`<text x="${W-PR+2}" y="${py(lastVal).toFixed(1)}" font-size="7" fill="#ffd54f" font-weight="700" dominant-baseline="middle">${lastVal}★</text>`:"";
+
+  const svgChart=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible">
+    ${grid}${yLabels}${lines}${dots}${lastTag}${xLabels}
+  </svg>`;
+
+  return`<div class="chart-section" style="margin-bottom:8px">
+    <div class="chart-title" style="font-size:7px;margin-bottom:2px">MARKER-VERLAUF · ${N} TAGE (max. 5)</div>
+    <div style="background:#0d1219;border:1px solid #1e2836;border-radius:3px;padding:4px 2px 1px;overflow-x:auto;-webkit-overflow-scrolling:touch">${svgChart}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:3px;padding:0 2px">
+      <span style="display:inline-flex;align-items:center;gap:2px;font-size:8px;color:#546e7a"><span style="width:6px;height:6px;background:#00e87a;border-radius:50%;display:inline-block"></span>4–5 Marker</span>
+      <span style="display:inline-flex;align-items:center;gap:2px;font-size:8px;color:#546e7a"><span style="width:6px;height:6px;background:#ffd54f;border-radius:50%;display:inline-block"></span>2–3 Marker</span>
+      <span style="display:inline-flex;align-items:center;gap:2px;font-size:8px;color:#546e7a"><span style="width:6px;height:6px;background:#546e7a;border-radius:50%;display:inline-block"></span>0–1 Marker</span>
+      <span style="color:#2a3a4a;font-size:8px">— nicht in Top 10</span>
+    </div>
   </div>`;
 }
-
 function buildDetail(s,sc){
   const hist=getHistory(s.t);
   const r=ratio(s);
