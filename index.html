@@ -1404,10 +1404,89 @@ function renderManage(){
   el.innerHTML=`<div class="manage-wrap">
     ${dotHtml}
     <div class="manage-ttl${uni==="hard"?" hard":""}">${uni==="soft"?"🟢":"🟡"} ${uni.toUpperCase()} — SCANS</div>
+    <button onclick="exportAnalysisData()" style="width:100%;padding:10px;margin-bottom:14px;
+      background:#0d1219;border:1px solid #1e2836;color:#90a4ae;border-radius:6px;
+      font-size:11px;font-weight:700;letter-spacing:.5px;cursor:pointer;font-family:inherit;
+      display:flex;align-items:center;justify-content:center;gap:6px">
+      ⬇ ANALYSE-DATEN EXPORTIEREN (CSV)
+    </button>
     ${st.scans.length?rows:`<div style="color:#333;font-size:11px">Noch keine Scans.</div>`}
   </div>`;
   setDot(true);
 }
+
+function exportAnalysisData(){
+  // Exportiert pro Ticker+Tag: Datum, Marker-Anzahl, Score, Preis, Rohwerte
+  // für beide Universen, damit eine externe Analyse über Zeit möglich ist
+  const rows=[["universum","datum","ticker","score","marker_anzahl","preis","atr","vola1w","ratio","relvol","rsi","sma50_abstand_pct","high52w_abstand_pct"]];
+
+  ["soft","hard"].forEach(u=>{
+    const allScans=state[u].scans.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    // Dedupe: pro Datum nur den letzten Scan behalten (falls mehrfach am Tag hochgeladen)
+    const byDate={};
+    allScans.forEach(sc=>{byDate[sc.date]=sc;}); // letzter gewinnt durch Überschreiben
+    const scans=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+
+    scans.forEach(scan=>{
+      scan.stocks.forEach(s=>{
+        const sc=score(s);
+        const m=calcMarkersForUniverse(u,s.t,scan.date);
+        const sma50pct=(s.price!=null&&s.sma50!=null&&s.sma50>0)?((s.price-s.sma50)/s.sma50*100).toFixed(2):"";
+        const h52pct=(s.price!=null&&s.high52w!=null&&s.high52w>0)?((s.price-s.high52w)/s.high52w*100).toFixed(2):"";
+        rows.push([
+          u,scan.date,s.t,sc,
+          m!==null?m:"",
+          s.price??"",s.atr??"",s.v1w??"",
+          (s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:""))||"",
+          s.rv??"",s.rsi??"",
+          sma50pct,h52pct
+        ]);
+      });
+    });
+  });
+
+  const csv=rows.map(r=>r.map(v=>typeof v==="number"?v:String(v).replace(/,/g,".")).join(",")).join("\n");
+  const blob=new Blob([csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  const today=new Date().toISOString().slice(0,10);
+  a.href=url;
+  a.download=`vcp-analyse-export-${today}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function calcMarkersForUniverse(u,ticker,uptoDate){
+  // Marker-Berechnung für einen bestimmten Tag, unabhängig vom aktuell aktiven Universum
+  const scans=state[u].scans.filter(sc=>sc.date<=uptoDate).sort((a,b)=>a.date.localeCompare(b.date));
+  const hist=scans.map(sc=>{
+    const s=sc.stocks.find(x=>x.t===ticker);
+    if(!s)return null;
+    return{date:sc.date,atr:s.atr,rv:s.rv,
+           ratio:s.ratio??(s.v1m&&s.v1w?s.v1m/s.v1w:null),
+           price:s.price,sma50:s.sma50,high52w:s.high52w};
+  }).filter(Boolean);
+  const byDate={};hist.forEach(h=>{byDate[h.date]=h;});
+  const days=Object.values(byDate).sort((a,b)=>a.date.localeCompare(b.date));
+  if(days.length<2)return null;
+  const window=days.slice(-3);
+  const last=window[window.length-1];
+  let c=0;
+  const atrs=window.map(h=>h.atr).filter(Boolean);
+  if(atrs.length>=2&&last.atr&&last.atr<3.5&&atrs[atrs.length-1]<atrs[0])c++;
+  const rvs=window.map(h=>h.rv).filter(Boolean);
+  if(rvs.length>=2&&last.rv&&last.rv<1.0&&rvs[rvs.length-1]<rvs[0])c++;
+  const sp=last.price&&last.sma50&&last.sma50>0?((last.price-last.sma50)/last.sma50*100):null;
+  if(sp!=null&&sp>=2&&sp<=12)c++;
+  const h52=last.price&&last.high52w&&last.high52w>0?((last.price-last.high52w)/last.high52w*100):null;
+  if(h52!=null&&h52>=-10&&h52<=0)c++;
+  const rats=window.map(h=>h.ratio).filter(Boolean);
+  if(rats.length>=2&&last.ratio&&last.ratio<1.2&&rats[rats.length-1]<rats[0])c++;
+  return c;
+}
+
 function confirmDel(id){
   const btn=document.getElementById("del-"+id);if(!btn)return;
   if(btn.dataset.armed==="1"){delScan(id);}
