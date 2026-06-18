@@ -765,19 +765,6 @@ function U(){return state[uni];}
 // ════════════════════════════════════════════════════════════════
 // STORAGE
 // ════════════════════════════════════════════════════════════════
-function cleanupScans(u){
-  const st=state[u];
-  const MAX=60;
-  if(st.scans.length>MAX){
-    const seeds=st.scans.filter(s=>st.seedIds.has(s.id));
-    const nonSeeds=st.scans.filter(s=>!st.seedIds.has(s.id));
-    const keep=nonSeeds.slice(-(MAX-seeds.length));
-    st.scans=[...seeds,...keep].sort((a,b)=>a.date.localeCompare(b.date));
-    localStorage.setItem(st.key,JSON.stringify(st.scans));
-    console.log(`${u}: Cleanup ${nonSeeds.length-keep.length} alte Scans entfernt`);
-  }
-}
-
 function loadAll(){
   ["soft","hard"].forEach(u=>{
     const st=state[u];
@@ -790,8 +777,6 @@ function loadAll(){
       }else{st.scans=[...st.seeds];localStorage.setItem(st.key,JSON.stringify(st.scans));}
     }catch(e){st.scans=[...st.seeds];}
   });
-  cleanupScans("soft");
-  cleanupScans("hard");
   setDot(true);
 }
 function saveU(){try{localStorage.setItem(U().key,JSON.stringify(U().scans));setDot(true);}catch(e){setDot(false);}}
@@ -1119,7 +1104,7 @@ function buildStarHistory(ticker){
     return c;
   }
 
-  const MAXDAYS=7;
+  const MAXDAYS=14;
   const showDays=allDays.slice(-MAXDAYS);
   const N=showDays.length;
   if(N<2)return"";
@@ -1131,22 +1116,56 @@ function buildStarHistory(ticker){
     return getCount(window);
   });
 
-  const dayStr=d=>{const p=d.split("-");return p[2]+"."+p[1];};
+  // SVG — gleicher Stil wie Score-Verlauf
+  const W=260,H=52,PL=16,PR=20,PT=6,PB=14;
+  const IW=W-PL-PR;
+  const step=N>1?IW/(N-1):IW;
+  function px(i){return PL+i*step;}
+  function py(v){return PT+(H-PT-PB)*(1-(v/5));}
+  function dayStr(d){const p=d.split("-");return`${p[2]}.${p[1]}`;}
 
-  const bars=showDays.map((d,i)=>{
-    const c=counts[i];
-    const label=dayStr(d.date);
-    const col=c===null?"#2a3a4a":c>=4?"#00e87a":c>=2?"#ffd54f":"#3a4a5a";
-    const txt=c===null?"–":c;
-    return`<div style="text-align:center;flex:1">
-      <div style="background:${col};color:#000;font-size:9px;font-weight:700;border-radius:3px;padding:3px 0;line-height:1">${txt}</div>
-      <div style="color:#37474f;font-size:6.5px;margin-top:2px">${label}</div>
-    </div>`;
+  // Referenzlinien bei 2 und 4
+  const refs=[2,4].map(v=>`
+    <line x1="${PL}" y1="${py(v).toFixed(1)}" x2="${W-PR}" y2="${py(v).toFixed(1)}"
+      stroke="rgba(255,255,255,.05)" stroke-width="1"/>`).join("");
+
+  // Linie (nur zwischen vorhandenen Punkten)
+  let pts=[];let segs=[];
+  counts.forEach((c,i)=>{
+    if(c===null){if(pts.length>1)segs.push(pts);pts=[];}
+    else pts.push(`${px(i).toFixed(1)},${py(c).toFixed(1)}`);
+  });
+  if(pts.length>1)segs.push(pts);
+  const lines=segs.map(s=>`<polyline points="${s.join(" ")}" fill="none" stroke="#ffd54f" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>`).join("");
+
+  // Punkte
+  const dots=counts.map((c,i)=>{
+    if(c===null)return`<text x="${px(i).toFixed(1)}" y="${py(2.5).toFixed(1)}" font-size="7" fill="#2a3a4a" text-anchor="middle">–</text>`;
+    const col=c>=4?"#00e87a":c>=2?"#ffd54f":"#546e7a";
+    return`<circle cx="${px(i).toFixed(1)}" cy="${py(c).toFixed(1)}" r="2.5" fill="${col}"/>
+      <text x="${px(i).toFixed(1)}" y="${(py(c)-5).toFixed(1)}" font-size="7" fill="${col}" text-anchor="middle" font-family="inherit">${c}</text>`;
   }).join("");
 
-  return`<div style="margin-bottom:8px">
-    <div style="color:#546e7a;font-size:7px;letter-spacing:1px;margin-bottom:4px">MARKER · LETZTE ${N} TAGE</div>
-    <div style="display:flex;gap:3px">${bars}</div>
+  // X-Labels (nur jeden 2. damit's nicht eng wird)
+  const xlbls=showDays.map((d,i)=>{
+    if(i%2!==0&&i!==N-1)return"";
+    return`<text x="${px(i).toFixed(1)}" y="${(H-1).toFixed(1)}" font-size="6.5" fill="#37474f" text-anchor="middle" font-family="inherit">${dayStr(d.date)}</text>`;
+  }).join("");
+
+  // Y-Label
+  const ylbls=[0,2,4,5].map(v=>`<text x="${PL-2}" y="${py(v).toFixed(1)}" font-size="6" fill="#37474f" text-anchor="end" dominant-baseline="middle" font-family="inherit">${v}</text>`).join("");
+
+  const svgEl=`<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;overflow:visible">
+    ${refs}${lines}${dots}${xlbls}${ylbls}
+  </svg>`;
+
+  return`<div class="chart-section" style="margin-bottom:8px">
+    <div class="chart-title">MARKER-VERLAUF · ${N} TAGE</div>
+    <div class="chart-wrap">${svgEl}</div>
+    <div class="chart-legend">
+      ${[["#00e87a","4–5"],["#ffd54f","2–3"],["#546e7a","0–1"]].map(([col,lbl])=>`<span style="display:inline-flex;align-items:center;gap:3px;font-size:8px;color:${col}"><span style="width:6px;height:6px;background:${col};border-radius:50%;display:inline-block"></span>${lbl} Marker</span>`).join(" ")}
+      <span style="color:#2a3a4a;font-size:8px">– nicht in Top 10</span>
+    </div>
   </div>`;
 }
 function buildDetail(s,sc){
