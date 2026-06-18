@@ -893,7 +893,7 @@ function buildScanList(st){
         const timeStr=s.time||"";
         const lbl=s.label||s.date;
         const strength=calcDayMarkerStrength(i);
-        const barH=Math.max(2,Math.round((strength/5)*12));
+        const barH=Math.max(2,Math.round((strength/5)*9));
         const barCol=strength>=4?"#00e87a":strength>=2?"#ffd54f":"#2a3a4a";
         return`<button onclick="selScan(${i});toggleScanDD()" style="
           width:100%;text-align:left;padding:7px 14px 7px 22px;
@@ -903,8 +903,8 @@ function buildScanList(st){
           font-size:11px;display:flex;align-items:center;gap:8px">
           ${timeStr?`<span style="color:#546e7a;font-size:9px;min-width:38px">${timeStr}</span>`:""}
           <span style="flex:1">${lbl.replace(date,"").replace(/–|-/,"").trim()||lbl}</span>
-          <div style="width:5px;height:12px;display:flex;align-items:flex-end">
-            <div style="width:5px;height:${barH}px;background:${barCol};border-radius:1px"></div>
+          <div style="width:4px;height:9px;display:flex;align-items:flex-end">
+            <div style="width:4px;height:${barH}px;background:${barCol};border-radius:1px"></div>
           </div>
         </button>`;
       }).join("")}
